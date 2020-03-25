@@ -1,0 +1,30 @@
+{
+  "name": "tooling",
+  "version": "1.0.0",
+  "description": "A collection of reusable tooling for webpack repos.",
+  "main": "index.js",
+  "repository": "https://github.com/webpack/tooling",
+  "author": "Tobias Koppers <tobias.koppers@googlemail.com>",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "yarn lint",
+    "lint": "yarn special-lint && tsc",
+    "special-lint": "node lockfile-lint"
+  },
+  "peerDependencies": {
+    "prettier": "^1.14.3 || ^2.0.2",
+    "typescript": "^3.6.4"
+  },
+  "devDependencies": {
+    "prettier": "^2.0.2",
+    "typescript": "^3.6.4"
+  },
+  "dependencies": {
+    "@yarnpkg/lockfile": "^1.1.0",
+    "commondir": "^1.0.1",
+    "glob": "^7.1.6",
+    "json-schema-to-typescript": "^8.2.0",
+    "yargs": "^15.3.1"
+  }
+}

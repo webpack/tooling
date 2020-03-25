@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "commonjs",
+    "lib": ["es2017", "dom"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "types": ["node"],
+    "esModuleInterop": true
+  },
+  "include": [
+    "lib/**/*.js",
+    "compile-to-defintions/**/*.js",
+    "format-file-header/**/*.js",
+    "format-schemas/**/*.js",
+    "generate-types/**/*.js",
+    "inherit-types/**/*.js",
+    "lockfile-lint/**/*.js",
+    "schemas-lint/**/*.js",
+    "type-coverage/**/*.js"
+  ]
+}
