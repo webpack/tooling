@@ -4,7 +4,7 @@ const {
 	write: doWrite,
 	root,
 	declarations: outputFolder,
-	schemas: schemasGlob
+	schemas: schemasGlob,
 } = argv;
 
 const fs = require("fs");
@@ -20,7 +20,7 @@ const prettierConfig = prettier.resolveConfig.sync(
 const style = {
 	printWidth: prettierConfig.printWidth,
 	useTabs: prettierConfig.useTabs,
-	tabWidth: prettierConfig.tabWidth
+	tabWidth: prettierConfig.tabWidth,
 };
 
 const makeSchemas = () => {
@@ -46,9 +46,9 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 		bannerComment:
 			"/**\n * This file was automatically generated.\n * DO NOT MODIFY BY HAND.\n * Run `yarn special-lint-fix` to update\n */",
 		unreachableDefinitions: true,
-		style
+		style,
 	}).then(
-		ts => {
+		(ts) => {
 			ts = ts.replace(
 				/\s+\*\s+\* This interface was referenced by `.+`'s JSON-Schema\s+\* via the `definition` ".+"\./g,
 				""
@@ -78,7 +78,7 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 				}
 			}
 		},
-		err => {
+		(err) => {
 			console.error(err);
 			process.exitCode = 1;
 		}
@@ -108,8 +108,19 @@ const preprocessSchema = (schema, root = schema) => {
 				const result = resolvePath(root, property.$ref);
 				schema.properties[key] = {
 					description: result.description,
-					anyOf: [property]
+					anyOf: [property],
 				};
+			} else if (
+				"oneOf" in property &&
+				property.oneOf.length === 1 &&
+				"$ref" in property.oneOf[0]
+			) {
+				const result = resolvePath(root, property.oneOf[0].$ref);
+				schema.properties[key] = {
+					description: property.description || result.description,
+					anyOf: property.oneOf,
+				};
+				preprocessSchema(schema.properties[key], root);
 			} else {
 				preprocessSchema(property, root);
 			}
