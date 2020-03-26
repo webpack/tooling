@@ -49,7 +49,17 @@ for (const filename of schemas) {
 			"not",
 		];
 
+		const isReference = (schema) => {
+			return (
+				"$ref" in schema ||
+				("oneOf" in schema &&
+					schema.oneOf.length === 1 &&
+					"$ref" in schema.oneOf[0])
+			);
+		};
+
 		const validateProperty = (path, property) => {
+			if (isReference(property)) return;
 			if (
 				typeof property.description !== "string" ||
 				property.description.length < 1
@@ -88,6 +98,13 @@ for (const filename of schemas) {
 				}
 			}
 
+			if ("type" in item) {
+				if (typeof item.type !== "string") {
+					console.log(`${path}: should have a single type`);
+					process.exitCode = 1;
+				}
+			}
+
 			if ("instanceof" in item) {
 				if (!("tsType" in item)) {
 					console.log(`${path}: When using instanceof, tsType is required`);
@@ -115,14 +132,29 @@ for (const filename of schemas) {
 
 			arrayProperties.forEach((prop) => {
 				if (prop in item) {
+					if (item[prop].length === 0) {
+						console.log(`${path} should not have empty one/any/allOf`);
+						process.exitCode = 1;
+					} else if ((item[prop].length === 1) !== (prop === "oneOf")) {
+						if (prop === "oneOf") {
+							console.log(`${path}: oneOf must have exactly one item`);
+						} else {
+							console.log(`${path}: ${prop} must have more than one item`);
+						}
+						process.exitCode = 1;
+					}
 					let i = 0;
-					for (const x of item[prop]) walker(`${path}.${prop}[${i++}]`, x);
+					for (const subitem of item[prop]) {
+						if (arrayProperties.some((prop) => prop in subitem)) {
+							console.log(`${path} should not double nest one/any/allOf`);
+							process.exitCode = 1;
+						}
+						walker(`${path}.${prop}[${i++}]`, subitem);
+					}
 				}
 			});
 			if ("items" in item) {
-				if (Object.keys(item.items).join() !== "$ref") {
-					validateProperty(`${path}.items`, item.items);
-				}
+				validateProperty(`${path}.items`, item.items);
 				walker(`${path}.items`, item.items);
 			}
 			if ("definitions" in item) {
@@ -137,22 +169,19 @@ for (const filename of schemas) {
 					console.log(
 						`${path} should have additionalProperties set to some value when describing properties`
 					);
+					process.exitCode = 1;
 				}
 				Object.keys(item.properties).forEach((name) => {
 					const property = item.properties[name];
-					if (Object.keys(property).join() !== "$ref") {
-						validateProperty(`${path}.properties.${name}`, property);
-					}
+					validateProperty(`${path}.properties.${name}`, property);
 					walker(`${path}.properties.${name}`, property);
 				});
 			}
 			if (typeof item.additionalProperties === "object") {
-				if (Object.keys(item.additionalProperties).join() !== "$ref") {
-					validateProperty(
-						`${path}.additionalProperties`,
-						item.additionalProperties
-					);
-				}
+				validateProperty(
+					`${path}.additionalProperties`,
+					item.additionalProperties
+				);
 				walker(`${path}.additionalProperties`, item.additionalProperties);
 			}
 		};
