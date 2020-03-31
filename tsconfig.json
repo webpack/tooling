@@ -13,6 +13,7 @@
     "esModuleInterop": true
   },
   "include": [
+    "declarations.d.ts",
     "lib/**/*.js",
     "compile-to-defintions/**/*.js",
     "format-file-header/**/*.js",
