@@ -4,11 +4,10 @@ declare module "typescript" {
 		s: ts.Symbol
 	): ts.ModifierFlags;
 	type OldSymbol = ts.Symbol;
-	export interface Symbol extends OldSymbol {
+	interface Symbol {
 		type?: ts.Type;
 	}
-	type OldDeclaration = ts.Declaration;
-	export interface Declaration extends OldDeclaration {
+	interface Declaration {
 		expression?: ts.Expression;
 	}
 }
