@@ -11,6 +11,7 @@ process.exitCode = 1;
 let exitCode = 0;
 
 const AnonymousType = "__Type";
+const Internals = "internals";
 
 const IDENTIFIER_NAME_REPLACE_REGEX = /^([^a-zA-Z$_])/;
 const IDENTIFIER_ALPHA_NUMERIC_NAME_REPLACE_REGEX = /[^a-zA-Z0-9$]+/g;
@@ -195,6 +196,17 @@ const printError = (diagnostic) => {
 
 (async () => {
 	const rootPath = path.resolve(root);
+
+	const ownConfigPath = path.resolve(rootPath, "generate-types-config.js");
+	const options = { nameMapping: {} };
+	try {
+		Object.assign(options, require(ownConfigPath));
+	} catch (e) {
+		if (verbose) {
+			console.log(`Can't read config file: ${e}`);
+		}
+	}
+
 	const configPath = path.resolve(rootPath, "tsconfig.types.json");
 	const configContent = ts.sys.readFile(configPath);
 	if (!configContent) {
@@ -222,15 +234,6 @@ const printError = (diagnostic) => {
 		parsedConfig.fileNames,
 		parsedConfig.options
 	);
-
-	const diagnostics = ts.getPreEmitDiagnostics(program);
-
-	if (diagnostics.length > 0) {
-		for (const diagnostic of diagnostics) {
-			printError(diagnostic);
-		}
-		// return;
-	}
 
 	const checker = program.getTypeChecker();
 
@@ -289,6 +292,30 @@ const printError = (diagnostic) => {
 
 	/**
 	 * @param {ts.SourceFile} source source file
+	 * @returns {Map<string, ts.Type>} type exports
+	 */
+	const getTypeExportsOfSourceFile = (source) => {
+		/** @type {Map<string, ts.Type>} */
+		const map = new Map();
+		const sourceAsAny = /** @type {any} */ (source);
+		if (
+			sourceAsAny.externalModuleIndicator ||
+			sourceAsAny.commonJsModuleIndicator
+		) {
+			const moduleSymbol = /** @type {ts.Symbol} */ (sourceAsAny.symbol);
+			if (!moduleSymbol.exports) throw new Error("Not a module namespace");
+			moduleSymbol.exports.forEach((symbol, name) => {
+				if (name === ts.InternalSymbolName.ExportEquals) return;
+				const type = checker.getDeclaredTypeOfSymbol(symbol);
+				map.set(ts.unescapeLeadingUnderscores(name), type);
+			});
+			return map;
+		}
+		throw new Error("Not a module");
+	};
+
+	/**
+	 * @param {ts.SourceFile} source source file
 	 * @returns {boolean} true when it's a module
 	 */
 	const isSourceFileModule = (source) => {
@@ -296,6 +323,35 @@ const printError = (diagnostic) => {
 		return (
 			sourceAsAny.externalModuleIndicator || sourceAsAny.commonJsModuleIndicator
 		);
+	};
+
+	const getDeclaration = (symbol) => {
+		if (!symbol) return undefined;
+		/** @type {ts.Declaration | undefined} */
+		let decl = undefined;
+		if (symbol.valueDeclaration) {
+			decl = symbol.valueDeclaration;
+		} else {
+			const decls = symbol.getDeclarations();
+			if (decls) decl = decls[0];
+		}
+		if (decl) {
+			const symbol = /** @type {any} */ (decl).symbol;
+			if (symbol && symbol.name === ts.InternalSymbolName.Type && decl.parent) {
+				const parent = decl.parent;
+				if (parent.kind === ts.SyntaxKind.TypeAliasDeclaration) {
+					decl = /** @type {ts.Declaration} */ (parent);
+				}
+				if (
+					parent.kind === ts.SyntaxKind.JSDocTypeExpression &&
+					parent.parent &&
+					parent.parent.kind === ts.SyntaxKind.JSDocTypedefTag
+				) {
+					decl = /** @type {ts.Declaration} */ (parent.parent);
+				}
+			}
+		}
+		return decl;
 	};
 
 	/**
@@ -349,6 +405,7 @@ const printError = (diagnostic) => {
 	};
 
 	let exposedType;
+	const typeExports = new Map();
 
 	for (const exposedFile of exposedFiles) {
 		const exposedSource = program.getSourceFile(
@@ -367,36 +424,12 @@ const printError = (diagnostic) => {
 		const type = getTypeOfSourceFile(exposedSource);
 		captureType(undefined, type, exposedSource);
 		exposedType = type;
-	}
 
-	const getDeclaration = (symbol) => {
-		if (!symbol) return undefined;
-		/** @type {ts.Declaration | undefined} */
-		let decl = undefined;
-		if (symbol.valueDeclaration) {
-			decl = symbol.valueDeclaration;
-		} else {
-			const decls = symbol.getDeclarations();
-			if (decls) decl = decls[0];
+		for (const [name, type] of getTypeExportsOfSourceFile(exposedSource)) {
+			captureType(undefined, type, exposedSource);
+			typeExports.set(name, type);
 		}
-		if (decl) {
-			const symbol = /** @type {any} */ (decl).symbol;
-			if (symbol && symbol.name === ts.InternalSymbolName.Type && decl.parent) {
-				const parent = decl.parent;
-				if (parent.kind === ts.SyntaxKind.TypeAliasDeclaration) {
-					decl = /** @type {ts.Declaration} */ (parent);
-				}
-				if (
-					parent.kind === ts.SyntaxKind.JSDocTypeExpression &&
-					parent.parent &&
-					parent.parent.kind === ts.SyntaxKind.JSDocTypedefTag
-				) {
-					decl = /** @type {ts.Declaration} */ (parent.parent);
-				}
-			}
-		}
-		return decl;
-	};
+	}
 
 	/** @typedef {{ signature: ts.Signature, typeParameters?: readonly ts.Type[], args: { name: string, optional: boolean, spread: boolean, type: ts.Type }[], returnType: ts.Type }} ParsedSignature */
 	/** @typedef {string[]} SymbolName */
@@ -404,23 +437,26 @@ const printError = (diagnostic) => {
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
 	/** @typedef {{ type: "tuple", typeArguments: readonly ts.Type[] }} ParsedTupleType */
-	/** @typedef {{ type: "interface", symbolName: SymbolName, class: boolean, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[] }} ParsedInterfaceType */
+	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[] }} ParsedInterfaceType */
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
+	/** @typedef {{ type: "namespace", symbolName: SymbolName, calls: ParsedSignature[], exports: PropertiesMap }} MergedNamespaceType */
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[] }} ParsedReferenceType */
 	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[] }} ParsedUnionType */
 	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[] }} ParsedIntersectionType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
 	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
 	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedImportType | ParsedSymbolType} ParsedType */
-	/** @typedef {ParsedType | MergedClassType} MergedType */
+	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
 	/**
-	 * @param {ts.Symbol=} symbol the symbol
-	 * @param {ts.Symbol=} aliasSymbol the aliasing symbol when set
+	 * @param {ts.Type=} type the type
 	 * @param {string[]=} suffix additional suffix
 	 * @returns {string[]} name of the symbol
 	 */
-	const parseName = (symbol, aliasSymbol, suffix = []) => {
+	const parseName = (type, suffix = []) => {
+		if (type === exposedType) return ["exports"];
+		const symbol = /** @type {any} */ (type).symbol;
+		const aliasSymbol = type.aliasSymbol;
 		const getName = (symbol) => {
 			if (!symbol) return undefined;
 			if (symbol.getFlags() & ts.SymbolFlags.ValueModule) return sourceFile;
@@ -447,12 +483,14 @@ const printError = (diagnostic) => {
 			valueDeclaration &&
 			({
 				[ts.SyntaxKind.ObjectLiteralExpression]: "Object",
+				[ts.SyntaxKind.TypeLiteral]: "TypeLiteral",
 				[ts.SyntaxKind.SourceFile]: "Module",
 				[ts.SyntaxKind.JSDocTypedefTag]: "Object",
 				[ts.SyntaxKind.JSDocTypeLiteral]: "Object",
 				[ts.SyntaxKind.TypeAliasDeclaration]: "Alias",
 				[ts.SyntaxKind.FunctionDeclaration]: "Function",
 				[ts.SyntaxKind.FunctionExpression]: "Function",
+				[ts.SyntaxKind.ArrowFunction]: "Function",
 				[ts.SyntaxKind.FunctionType]: "Function",
 				[ts.SyntaxKind.JSDocSignature]: "Function",
 				[ts.SyntaxKind.JSDocCallbackTag]: "Function",
@@ -466,7 +504,7 @@ const printError = (diagnostic) => {
 				`Kind${valueDeclaration.kind}_`);
 		const name1 = getName(symbol);
 		const name2 = getName(aliasSymbol);
-		const result = [name1, name2, ...suffix, syntaxType, sourceFile];
+		const result = [name1, name2, ...suffix, sourceFile, syntaxType];
 		if (!name1 && !name2) {
 			result.unshift(AnonymousType);
 		}
@@ -490,20 +528,29 @@ const printError = (diagnostic) => {
 				.slice()
 				.reverse()
 				.map((p) => {
-					const valueDeclaration = p.valueDeclaration;
-					const type = checker.getTypeOfSymbolAtLocation(p, valueDeclaration);
+					const paramDeclaration =
+						p.valueDeclaration && ts.isParameter(p.valueDeclaration)
+							? p.valueDeclaration
+							: undefined;
+					const jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration &&
+					p.valueDeclaration.kind === ts.SyntaxKind.JSDocParameterTag
+						? /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration)
+						: undefined);
+					const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
 					const optional =
-						((p.getFlags() & ts.SymbolFlags.Optional) !== 0 ||
-							(type.getFlags() & ts.TypeFlags.Any) !== 0) &&
-						canBeOptional;
+						canBeOptional &&
+						((type.getFlags() & ts.TypeFlags.Any) !== 0 ||
+							(p.getFlags() & ts.SymbolFlags.Optional) !== 0 ||
+							(paramDeclaration && !!paramDeclaration.initializer) ||
+							(jsdocParamDeclaration &&
+								jsdocParamDeclaration.typeExpression &&
+								jsdocParamDeclaration.typeExpression.type.kind ===
+									ts.SyntaxKind.JSDocOptionalType));
 					canBeOptional = canBeOptional && optional;
 					return {
 						name: p.name,
 						optional,
-						spread:
-							valueDeclaration &&
-							ts.isParameter(valueDeclaration) &&
-							!!valueDeclaration.dotDotDotToken,
+						spread: paramDeclaration && !!paramDeclaration.dotDotDotToken,
 						type,
 					};
 				})
@@ -566,7 +613,7 @@ const printError = (diagnostic) => {
 		if (type.isUnion()) {
 			return {
 				type: "union",
-				symbolName: parseName(type.symbol, type.aliasSymbol),
+				symbolName: parseName(type),
 				types: type.types,
 			};
 		}
@@ -574,7 +621,7 @@ const printError = (diagnostic) => {
 		if (type.isIntersection()) {
 			return {
 				type: "intersection",
-				symbolName: parseName(type.symbol, type.aliasSymbol),
+				symbolName: parseName(type),
 				types: type.types,
 			};
 		}
@@ -609,7 +656,7 @@ const printError = (diagnostic) => {
 			return {
 				type: "interface",
 				symbolName: [AnonymousType, "Literal"],
-				class: false,
+				subtype: "literal",
 				properties: toPropMap(type.getProperties()),
 				constructors: [],
 				calls: [],
@@ -664,7 +711,7 @@ const printError = (diagnostic) => {
 				if (exportName === undefined) {
 					if (verbose) {
 						console.log(
-							`${parseName(/** @type {any} */ (decl).symbol).join(
+							`${parseName(type).join(
 								" "
 							)} is an imported symbol, but couldn't find export in ${
 								externalSource.fileName
@@ -696,7 +743,7 @@ const printError = (diagnostic) => {
 							}
 							return {
 								type: "import",
-								symbolName: parseName(symbol, type.aliasSymbol, [
+								symbolName: parseName(type, [
 									toIdentifier(exportName),
 									"Import",
 								]),
@@ -709,10 +756,7 @@ const printError = (diagnostic) => {
 						if (match) {
 							return {
 								type: "import",
-								symbolName: parseName(symbol, type.aliasSymbol, [
-									toIdentifier(match[2]),
-									"Import",
-								]),
+								symbolName: parseName(type, [toIdentifier(match[2]), "Import"]),
 								exportName: match[2],
 								from: match[1],
 							};
@@ -726,7 +770,7 @@ const printError = (diagnostic) => {
 			}
 		}
 
-		const symbolName = parseName(symbol, type.aliasSymbol);
+		const symbolName = parseName(type);
 
 		if (flags & ts.TypeFlags.UniqueESSymbol) {
 			return {
@@ -735,10 +779,16 @@ const printError = (diagnostic) => {
 			};
 		}
 
+		const declaration = getDeclaration(symbol);
+
 		return {
 			type: "interface",
 			symbolName,
-			class: type.isClass(),
+			subtype: type.isClass()
+				? "class"
+				: declaration && declaration.kind === ts.SyntaxKind.SourceFile
+				? "module"
+				: undefined,
 			properties: toPropMap(type.getProperties(), type.getBaseTypes()),
 			constructors: type.getConstructSignatures().map(parseSignature),
 			calls: type.getCallSignatures().map(parseSignature),
@@ -758,6 +808,19 @@ const printError = (diagnostic) => {
 		};
 	};
 
+	/** @type {Set<ts.Type>} */
+	const typeUsedAsArgument = new Set();
+	/** @type {Set<ts.Type>} */
+	const typeUsedAsReturnValue = new Set();
+	/** @type {Set<ts.Type>} */
+	const typeUsedAsConstructedValue = new Set();
+	/** @type {Set<ts.Type>} */
+	const typeUsedAsBaseType = new Set();
+	/** @type {Set<ts.Type>} */
+	const typeUsedAsTypeArgument = new Set();
+	/** @type {Set<ts.Type>} */
+	const typeUsedInUnion = new Set();
+
 	/** @type {Map<ts.Type, MergedType>} */
 	const parsedCollectedTypes = new Map();
 
@@ -770,27 +833,42 @@ const printError = (diagnostic) => {
 		parsedCollectedTypes.set(type, parsed);
 		switch (parsed.type) {
 			case "union":
+				for (const inner of parsed.types) {
+					typeUsedInUnion.add(inner);
+					captureType(type, inner);
+				}
+				break;
 			case "intersection":
 				for (const inner of parsed.types) captureType(type, inner);
 				break;
 			case "reference":
 				captureType(type, parsed.target);
-				for (const inner of parsed.typeArguments) captureType(type, inner);
+				for (const inner of parsed.typeArguments) {
+					typeUsedAsTypeArgument.add(inner);
+					captureType(type, inner);
+				}
 				break;
 			case "interface":
-				for (const prop of parsed.baseTypes) captureType(type, prop);
+				for (const prop of parsed.baseTypes) {
+					typeUsedAsBaseType.add(prop);
+					captureType(type, prop);
+				}
 				for (const prop of parsed.properties.values())
 					captureType(type, prop.type);
 				for (const call of parsed.calls) {
 					for (const arg of call.args) {
+						typeUsedAsArgument.add(arg.type);
 						captureType(type, arg.type);
 					}
+					typeUsedAsReturnValue.add(call.returnType);
 					captureType(type, call.returnType);
 				}
 				for (const construct of parsed.constructors) {
 					for (const arg of construct.args) {
+						typeUsedAsArgument.add(arg.type);
 						captureType(type, arg.type);
 					}
+					typeUsedAsConstructedValue.add(construct.returnType);
 					captureType(type, construct.returnType);
 				}
 				if (parsed.numberIndex) captureType(type, parsed.numberIndex);
@@ -811,7 +889,7 @@ const printError = (diagnostic) => {
 		);
 	};
 
-	/// Merge interfaces to classes ///
+	/// Convert interfaces to classes ///
 	/**
 	 * @param {ts.Type} type the type
 	 * @returns {boolean} true, when it can be classified
@@ -819,6 +897,7 @@ const printError = (diagnostic) => {
 	const canBeClassified = (type) => {
 		const parsed = parsedCollectedTypes.get(type);
 		if (parsed === undefined) return false;
+		if (parsed.type === "reference") return true;
 		if (parsed.type === "class") return true;
 		if (
 			parsed.type !== "interface" ||
@@ -881,6 +960,16 @@ const printError = (diagnostic) => {
 					if (merged.baseType) toBeClassified.add(merged.baseType);
 				}
 			}
+		} else if (parsed.type === "interface" && parsed.subtype === "class") {
+			if (canBeClassified(type)) {
+				toBeClassified.add(type);
+			} else if (verbose) {
+				console.log(
+					`${checker.typeToString(
+						type
+					)} was a class in source code, but we are unable to generate a class for it.`
+				);
+			}
 		}
 	}
 
@@ -900,6 +989,120 @@ const printError = (diagnostic) => {
 			stringIndex: parsed.stringIndex,
 			typeParameters: parsed.typeParameters,
 			baseType: parsed.baseTypes[0],
+		};
+		parsedCollectedTypes.set(type, newParsed);
+	}
+
+	/// Analyse unions and intersections ///
+
+	for (const [type, parsed] of parsedCollectedTypes) {
+		if (parsed.type === "union" || parsed.type === "intersection") {
+			if (typeUsedAsTypeArgument.has(type)) {
+				for (const t of parsed.types) {
+					typeUsedAsTypeArgument.add(t);
+				}
+			}
+			if (typeUsedAsReturnValue.has(type)) {
+				for (const t of parsed.types) {
+					typeUsedAsReturnValue.add(t);
+				}
+			}
+			if (typeUsedAsConstructedValue.has(type)) {
+				for (const t of parsed.types) {
+					typeUsedAsConstructedValue.add(t);
+				}
+			}
+		}
+		if (parsed.type === "intersection") {
+			const subtypes = parsed.types.map((t) => parsedCollectedTypes.get(t));
+			const keys = new Set();
+			if (
+				subtypes.every(
+					(parsed) =>
+						parsed.type === "interface" &&
+						!parsed.subtype &&
+						!parsed.typeParameters &&
+						!parsed.stringIndex &&
+						!parsed.numberIndex &&
+						parsed.baseTypes.length === 0 &&
+						Array.from(parsed.properties.keys()).every((key) => {
+							if (keys.has(key)) return false;
+							keys.add(key);
+							return true;
+						})
+				)
+			) {
+				const interfaceSubtypes = /** @type {ParsedInterfaceType[]} */ (subtypes);
+				console.log(
+					`merged ${interfaceSubtypes
+						.map((p) => p.symbolName.join(" "))
+						.join(" & ")}`
+				);
+				const symbol = /** @type {any} */ (type).symbol;
+				const declaration = symbol && getDeclaration(symbol);
+				/** @type {ParsedInterfaceType} */
+				const newParsed = {
+					type: "interface",
+					subtype:
+						declaration && declaration.kind === ts.SyntaxKind.SourceFile
+							? "module"
+							: undefined,
+					symbolName: parsed.symbolName,
+					baseTypes: [],
+					calls: flatten(interfaceSubtypes.map((p) => p.calls)),
+					constructors: flatten(interfaceSubtypes.map((p) => p.constructors)),
+					properties: new Map(
+						flatten(interfaceSubtypes.map((p) => p.properties))
+					),
+				};
+				parsedCollectedTypes.set(type, newParsed);
+			}
+		}
+	}
+
+	/// Convert interfaces to namespaces ///
+
+	for (const [type, parsed] of parsedCollectedTypes) {
+		if (parsed.type !== "interface") continue;
+		if (
+			parsed.numberIndex ||
+			parsed.stringIndex ||
+			parsed.baseTypes.length > 0 ||
+			parsed.typeParameters ||
+			parsed.constructors.length > 0 ||
+			parsed.properties.size === 0 ||
+			typeUsedAsBaseType.has(type) ||
+			typeUsedAsConstructedValue.has(type) ||
+			typeUsedAsArgument.has(type) ||
+			typeUsedAsTypeArgument.has(type)
+		) {
+			continue;
+		}
+		if (
+			parsed.subtype !== undefined &&
+			parsed.subtype !== "module" &&
+			parsed.subtype !== "literal" &&
+			exposedType !== type
+		) {
+			continue;
+		}
+		if (exposedType !== type && parsed.subtype !== "module") {
+			if (typeUsedAsReturnValue.has(type)) continue;
+			// TODO heuristic
+			if (
+				!Array.from(typeReferencedBy.get(type), (t) =>
+					parsedCollectedTypes.get(t)
+				).every((p) => p.type === "namespace")
+			) {
+				continue;
+			}
+		}
+		/** @type {MergedNamespaceType} */
+		const newParsed = {
+			type: "namespace",
+			symbolName: parsed.symbolName,
+			calls: parsed.calls,
+			exports: parsed.properties,
 		};
 		parsedCollectedTypes.set(type, newParsed);
 	}
@@ -1039,6 +1242,7 @@ const printError = (diagnostic) => {
 				break;
 			}
 			case "class":
+			case "namespace":
 			case "symbol":
 			case "import": {
 				needName.push([type, parsed]);
@@ -1047,9 +1251,17 @@ const printError = (diagnostic) => {
 		}
 	}
 
-	const usedNames = new Set();
+	const { nameMapping } = options;
+
+	const usedNames = new Set([Internals, AnonymousType]);
 	const nameToQueueEntry = new Map();
 	const findName = (symbolName, requeueOnConflict = false) => {
+		const key = symbolName.join(" ");
+		for (const wishedName of Object.keys(nameMapping)) {
+			if (nameMapping[wishedName].test(key)) {
+				symbolName = [wishedName, ...symbolName];
+			}
+		}
 		let name;
 		for (let i = 1; i <= symbolName.length; i++) {
 			name = joinIdentifer(symbolName.slice(0, i));
@@ -1150,7 +1362,7 @@ const printError = (diagnostic) => {
 	/**
 	 * @param {ParsedSignature} sig the signature
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
-	 * @param {"arrow" | "constructor" | "class-constructor" | undefined} type type of generated code
+	 * @param {"arrow" | "constructor" | "class-constructor" | "method" | undefined} type type of generated code
 	 * @returns {string} code
 	 */
 	const sigToString = (sig, typeArgs, type = undefined) => {
@@ -1182,12 +1394,16 @@ const printError = (diagnostic) => {
 					sig.returnType,
 					innerTypeArgs
 				)}`;
-			default: {
+			case "method":
 				return `${sigTypeArgs}${args}: ${getCode(
 					sig.returnType,
 					innerTypeArgs
 				)}`;
-			}
+			default:
+				return `${sigTypeArgs}${args}: ${getCode(
+					sig.returnType,
+					innerTypeArgs
+				)}`;
 		}
 	};
 
@@ -1223,7 +1439,42 @@ const printError = (diagnostic) => {
 		}
 
 		const handleProperties = (properties, prefix = "") => {
-			for (const [name, { type: propType, optional, readonly }] of properties) {
+			for (const [
+				name,
+				{ type: propType, optional, readonly, method },
+			] of properties) {
+				if (method) {
+					let methodInfo = parsedCollectedTypes.get(propType);
+					while (
+						methodInfo.type === "reference" &&
+						methodInfo.typeArguments.length === 0
+					) {
+						methodInfo = parsedCollectedTypes.get(methodInfo.target);
+					}
+					if (
+						methodInfo.type === "interface" &&
+						methodInfo.baseTypes.length === 0 &&
+						methodInfo.constructors.length === 0 &&
+						!methodInfo.numberIndex &&
+						!methodInfo.stringIndex &&
+						methodInfo.properties.size === 0
+					) {
+						for (const call of methodInfo.calls) {
+							items.push(
+								`${getDocumentation(
+									call.signature
+								)}${prefix}${name}${sigToString(call, typeArgs, "method")}`
+							);
+						}
+						continue;
+					} else if (verbose) {
+						console.log(
+							`Method ${name} has weird type ${getCode(propType, typeArgs)} (${
+								methodInfo.type
+							})`
+						);
+					}
+				}
 				const code = getCode(propType, typeArgs);
 				const p = prefix + (readonly ? "readonly " : "");
 				if (code.startsWith("(undefined | ") && !optional) {
@@ -1296,21 +1547,21 @@ const printError = (diagnostic) => {
 			case "interface": {
 				const variable = typeToVariable.get(type);
 				if (variable !== undefined) {
-					if (
-						!hasTypeArgs &&
-						parsed.typeParameters &&
-						/*parsed.typeParameters.some(t => typeArgs.has(t))*/ true
-					) {
+					if (!hasTypeArgs && parsed.typeParameters) {
 						return `${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs)
 						)}>`;
 					}
-					return variable;
+					return `${Internals}.${variable}`;
 				}
 				if (isSimpleFunction(parsed)) {
 					return `(${sigToString(parsed.calls[0], typeArgs, "arrow")})`;
 				}
-				return `{ ${getInterfaceItems(type, parsed, typeArgs).join("; ")} }`;
+				return `/* ${parsed.subtype} */ { ${getInterfaceItems(
+					type,
+					parsed,
+					typeArgs
+				).join("; ")} }`;
 			}
 			case "class": {
 				const variable = typeToVariable.get(type);
@@ -1319,24 +1570,28 @@ const printError = (diagnostic) => {
 					parsed.typeParameters &&
 					/*parsed.typeParameters.some(t => typeArgs.has(t))*/ true
 				) {
-					return `${variable}<${parsed.typeParameters.map((t) =>
+					return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
 						getCode(t, typeArgs)
 					)}>`;
 				}
-				return variable;
+				return `${Internals}.${variable}`;
 			}
 			case "typeof class": {
 				const variable = typeToVariable.get(parsed.correspondingType);
-				return `typeof ${variable}`;
+				return `typeof ${Internals}.${variable}`;
 			}
+			case "namespace":
 			case "symbol": {
 				const variable = typeToVariable.get(type);
-				return `typeof ${variable}`;
+				return `typeof ${Internals}.${variable}`;
+			}
+			case "import": {
+				return typeToVariable.get(type);
 			}
 			default: {
 				const variable = typeToVariable.get(type);
 				if (variable !== undefined) {
-					return variable;
+					return `${Internals}.${variable}`;
 				}
 			}
 		}
@@ -1389,7 +1644,7 @@ const printError = (diagnostic) => {
 					const typeArgs = new Set(parsed.typeParameters);
 					addDeclaration(
 						name,
-						`${getDocumentation(type.getSymbol())}interface ${name}${
+						`${getDocumentation(type.getSymbol())}export interface ${name}${
 							parsed.typeParameters
 								? `<${parsed.typeParameters
 										.map((t) => getCode(t, new Set()))
@@ -1401,7 +1656,9 @@ const printError = (diagnostic) => {
 										.map((t) => getCode(t, typeArgs))
 										.join(", ")}`
 								: ""
-						} {\n${getInterfaceItems(type, parsed, typeArgs)
+						} /* ${parsed.symbolName.join(" ")} */ /* ${
+							parsed.subtype
+						} */ {\n${getInterfaceItems(type, parsed, typeArgs)
 							.map((i) => `\t${i};`)
 							.join("\n")}\n}`
 					);
@@ -1416,7 +1673,7 @@ const printError = (diagnostic) => {
 					const typeArgs = new Set(parsed.typeParameters);
 					addDeclaration(
 						name,
-						`declare ${
+						`export ${
 							parsed.constructors.length === 0 ? "abstract class" : "class"
 						} ${name}${
 							parsed.typeParameters
@@ -1436,13 +1693,65 @@ const printError = (diagnostic) => {
 				}
 				break;
 			}
+			case "namespace": {
+				const name = typeToVariable.get(type);
+				if (name) {
+					codeGenerationContext = name;
+					const exports = [];
+					const declarations = [];
+					for (const [
+						name,
+						{ type: exportedType, optional, readonly, method },
+					] of parsed.exports) {
+						const code = getCode(exportedType, new Set());
+						if (code.startsWith(`typeof ${Internals}.`)) {
+							exports.push(
+								`${code.slice(`typeof ${Internals}.`.length)} as ${name}`
+							);
+						} else {
+							declarations.push(
+								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
+							);
+						}
+					}
+					if (type === exposedType) {
+						for (const [name, type] of typeExports) {
+							const code = getCode(type, new Set());
+							if (code.startsWith(`${Internals}.`)) {
+								exports.push(
+									`${code.slice(`${Internals}.`.length)} as ${name}`
+								);
+							} else {
+								declarations.push(`export const ${name}: ${code};\n`);
+							}
+						}
+					}
+					addDeclaration(
+						name,
+						`${parsed.calls
+							.map(
+								(call) =>
+									`export function ${name}${sigToString(
+										call,
+										new Set(),
+										"method"
+									)};\n`
+							)
+							.join("")}export namespace ${name} {\n${declarations.join("")}${
+							exports.length > 0 ? `export { ${exports.join(", ")} }` : ""
+						}\n}`
+					);
+					codeGenerationContext = "";
+				}
+				break;
+			}
 			case "union":
 			case "intersection":
 				const name = typeToVariable.get(type);
 				if (name) {
 					addDeclaration(
 						name,
-						`type ${name} = ${parsed.types
+						`export type ${name} = ${parsed.types
 							.map((t) => getCode(t, new Set()))
 							.join(parsed.type === "intersection" ? " & " : " | ")
 							.replace(/(^|\| )false \| true($| \|)/g, "$1boolean$2")};`
@@ -1451,7 +1760,7 @@ const printError = (diagnostic) => {
 				break;
 			case "symbol": {
 				const name = typeToVariable.get(type);
-				addDeclaration(name, `declare const ${name}: unique symbol;`);
+				addDeclaration(name, `export const ${name}: unique symbol;`);
 				break;
 			}
 			case "import": {
@@ -1463,11 +1772,14 @@ const printError = (diagnostic) => {
 	}
 
 	if (exposedType) {
-		const exportsName = findName(["exports"]);
-		exports.push(
-			`declare const ${exportsName}: ${getCode(exposedType, new Set())};`
-		);
-		exports.push(`export = ${exportsName};`);
+		const code = getCode(exposedType, new Set());
+		if (code.startsWith("typeof ")) {
+			exports.push(`export = ${code.slice("typeof ".length)};`);
+		} else {
+			const exportsName = findName(["exports"]);
+			exports.push(`declare const ${exportsName}: ${code};`);
+			exports.push(`export = ${exportsName};`);
+		}
 	}
 
 	const outputFilePath = path.resolve(root, outputFile);
@@ -1497,7 +1809,9 @@ const printError = (diagnostic) => {
 			),
 		...[...importDeclarations].sort(),
 		"",
+		`declare namespace ${Internals} {`,
 		...sortedDeclarations,
+		"}",
 		"",
 		...exports,
 	].join("\n");

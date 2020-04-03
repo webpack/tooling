@@ -3,7 +3,6 @@ declare module "typescript" {
 	export function getDeclarationModifierFlagsFromSymbol(
 		s: ts.Symbol
 	): ts.ModifierFlags;
-	type OldSymbol = ts.Symbol;
 	interface Symbol {
 		type?: ts.Type;
 	}
