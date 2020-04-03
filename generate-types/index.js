@@ -1557,11 +1557,7 @@ const printError = (diagnostic) => {
 				if (isSimpleFunction(parsed)) {
 					return `(${sigToString(parsed.calls[0], typeArgs, "arrow")})`;
 				}
-				return `/* ${parsed.subtype} */ { ${getInterfaceItems(
-					type,
-					parsed,
-					typeArgs
-				).join("; ")} }`;
+				return `{ ${getInterfaceItems(type, parsed, typeArgs).join("; ")} }`;
 			}
 			case "class": {
 				const variable = typeToVariable.get(type);
@@ -1656,9 +1652,7 @@ const printError = (diagnostic) => {
 										.map((t) => getCode(t, typeArgs))
 										.join(", ")}`
 								: ""
-						} /* ${parsed.symbolName.join(" ")} */ /* ${
-							parsed.subtype
-						} */ {\n${getInterfaceItems(type, parsed, typeArgs)
+						} {\n${getInterfaceItems(type, parsed, typeArgs)
 							.map((i) => `\t${i};`)
 							.join("\n")}\n}`
 					);
