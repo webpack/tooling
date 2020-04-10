@@ -24,7 +24,7 @@ const execToArray = (content, regexp) => {
 	while (match) {
 		items.push({
 			content: match[0],
-			key: match[1] + match[2]
+			key: match[1] + match[2],
 		});
 		match = regexp.exec(content);
 	}
@@ -42,12 +42,12 @@ const schema = [
 					"/*",
 					"\tMIT License http://www.opensource.org/licenses/mit-license.php",
 					author && `\t${author}`,
-					"*/"
+					"*/",
 				]
 					.filter(Boolean)
 					.join("\n") + "\n"
 			);
-		}
+		},
 	},
 	{
 		title: "new line after license comment",
@@ -55,11 +55,11 @@ const schema = [
 		updateMessage: "insert a new line after the license comment",
 		update() {
 			return "\n";
-		}
+		},
 	},
 	{
 		title: "strict mode",
-		regexp: /"use strict";\n/g
+		regexp: /"use strict";\n/g,
 	},
 	{
 		title: "new line after strict mode",
@@ -67,7 +67,7 @@ const schema = [
 		updateMessage: 'insert a new line after "use strict"',
 		update() {
 			return "\n";
-		}
+		},
 	},
 	{
 		title: "imports",
@@ -79,10 +79,10 @@ const schema = [
 				/const (?:\{\s+\w+(?::\s+\w+)?(?:,\s+\w+(?::\s+\w+)?)*\s+\}|\w+) = (?:\/\*\* @type \{TODO\} \*\/\s\()?require\("([^"]+)"\)\)?((?:\.\w+)*);\n/g
 			);
 			items.sort(sortImport);
-			return items.map(item => item.content).join("") + "\n";
+			return items.map((item) => item.content).join("") + "\n";
 		},
 		optional: true,
-		repeat: true
+		repeat: true,
 	},
 	{
 		title: "type imports",
@@ -94,11 +94,11 @@ const schema = [
 				/\/\*\* (?:@template \w+ )*@typedef \{import\("([^"]+)"\)((?:\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?)\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n/g
 			);
 			items.sort(sortImport);
-			return items.map(item => item.content).join("") + "\n";
+			return items.map((item) => item.content).join("") + "\n";
 		},
 		optional: true,
-		repeat: true
-	}
+		repeat: true,
+	},
 ];
 
 const allSerializables = new Set();
@@ -183,7 +183,7 @@ for (const filePath of allFiles) {
 }
 
 // Check if internalSerializables.js includes all serializables in webpack
-for (const internalSerializables of allFiles.filter(file =>
+for (const internalSerializables of allFiles.filter((file) =>
 	file.includes("internalSerializables")
 )) {
 	const content = fs.readFileSync(internalSerializables);
