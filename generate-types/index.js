@@ -1229,10 +1229,17 @@ const printError = (diagnostic) => {
 
 	const knownTypes = new TupleMap();
 	for (const [type, parsed] of parsedCollectedTypes) {
+		if (!("symbolName" in parsed)) continue;
 		const hash = getTypeHash(parsed);
 		if (!hash) continue;
 		const otherType = knownTypes.get(hash);
 		if (otherType) {
+			const otherParsed = parsedCollectedTypes.get(otherType);
+			if (!("symbolName" in otherParsed)) continue;
+			const commonSymbolName = otherParsed.symbolName.filter((n) =>
+				parsed.symbolName.includes(n)
+			);
+			otherParsed.symbolName = commonSymbolName;
 			parsedCollectedTypes.set(type, {
 				type: "reference",
 				target: otherType,
@@ -1334,6 +1341,8 @@ const printError = (diagnostic) => {
 	const imports = new Map();
 	/** @type {Set<string>} */
 	const importDeclarations = new Set();
+	/** @type {Map<ts.Type, function(): void>} */
+	const emitDeclarations = new Map();
 	/** @type {string[]} */
 	const exports = [];
 	const typeToCode = new TupleMap();
@@ -1346,6 +1355,22 @@ const printError = (diagnostic) => {
 	const addDeclaration = (key, text) => {
 		declarations.add(text);
 		declarationKeys.set(text, key);
+	};
+
+	const queueDeclaration = (type, variable, fn) => {
+		if (!variable) {
+			throw new Error(
+				`variable missing for queueDeclaration of ${checker.typeToString(type)}`
+			);
+		}
+		emitDeclarations.set(type, () => {
+			const oldCodeGenerationContext = codeGenerationContext;
+			codeGenerationContext = variable;
+			const text = fn();
+			codeGenerationContext = oldCodeGenerationContext;
+			declarations.add(text);
+			declarationKeys.set(text, variable);
+		});
 	};
 
 	/**
@@ -1546,15 +1571,29 @@ const printError = (diagnostic) => {
 		switch (parsed.type) {
 			case "primitive":
 				return parsed.name;
-			case "intersection":
-				return `(${parsed.types.map((t) => getCode(t, typeArgs)).join(" & ")})`;
 			case "union":
-				return `(${parsed.types
-					.map((t) => getCode(t, typeArgs))
-					.join(" | ")})`.replace(
-					/(^\(|\| )false \| true(\)$| \|)/g,
-					"$1boolean$2"
-				);
+			case "intersection": {
+				/**
+				 * @param {Set<ts.Type>} typeArgs type args specified in context
+				 * @returns {string} code
+				 */
+				const code = (typeArgs) =>
+					`(${parsed.types
+						.map((t) => getCode(t, typeArgs))
+						.join(parsed.type === "intersection" ? " & " : " | ")
+						.replace(/(^|\| )false \| true($| \|)/g, "$1boolean$2")})`;
+
+				const variable = typeToVariable.get(type);
+				if (variable) {
+					queueDeclaration(
+						type,
+						variable,
+						() => `export type ${variable} = ${code(new Set())};`
+					);
+					return `${Internals}.${variable}`;
+				}
+				return code(typeArgs);
+			}
 			case "reference": {
 				if (parsed.typeArguments.length === 0)
 					return getCode(parsed.target, typeArgs, hasTypeArgs);
@@ -1579,8 +1618,28 @@ const printError = (diagnostic) => {
 			case "interface": {
 				const variable = typeToVariable.get(type);
 				if (variable !== undefined) {
+					queueDeclaration(type, variable, () => {
+						const typeArgs = new Set(parsed.typeParameters);
+						return `${getDocumentation(
+							type.getSymbol()
+						)}export interface ${variable}${
+							parsed.typeParameters
+								? `<${parsed.typeParameters
+										.map((t) => getCode(t, new Set()))
+										.join(", ")}>`
+								: ""
+						}${
+							parsed.baseTypes.length > 0
+								? ` extends ${parsed.baseTypes
+										.map((t) => getCode(t, typeArgs))
+										.join(", ")}`
+								: ""
+						} {\n${getInterfaceItems(type, parsed, typeArgs)
+							.map((i) => `\t${i};`)
+							.join("\n")}\n}`;
+					});
 					if (!hasTypeArgs && parsed.typeParameters) {
-						return `${variable}<${parsed.typeParameters.map((t) =>
+						return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs)
 						)}>`;
 					}
@@ -1591,36 +1650,102 @@ const printError = (diagnostic) => {
 				}
 				return `{ ${getInterfaceItems(type, parsed, typeArgs).join("; ")} }`;
 			}
+			case "typeof class":
 			case "class": {
-				const variable = typeToVariable.get(type);
-				if (
-					!hasTypeArgs &&
-					parsed.typeParameters &&
-					/*parsed.typeParameters.some(t => typeArgs.has(t))*/ true
-				) {
+				const classType =
+					parsed.type === "typeof class" ? parsed.correspondingType : type;
+				const variable = typeToVariable.get(classType);
+				queueDeclaration(classType, variable, () => {
+					const parsed = /** @type {MergedClassType} */ (parsedCollectedTypes.get(
+						classType
+					));
+					const typeArgs = new Set(parsed.typeParameters);
+					return `export ${
+						parsed.constructors.length === 0 ? "abstract class" : "class"
+					} ${variable}${
+						parsed.typeParameters
+							? `<${parsed.typeParameters
+									.map((t) => getCode(t, new Set()))
+									.join(", ")}>`
+							: ""
+					}${
+						parsed.baseType
+							? ` extends ${getCode(parsed.baseType, typeArgs)}`
+							: ""
+					} {\n${getInterfaceItems(classType, parsed, typeArgs)
+						.map((i) => `\t${i};`)
+						.join("\n")}\n}`;
+				});
+				if (parsed.type === "typeof class") {
+					return `typeof ${Internals}.${variable}`;
+				}
+				if (!hasTypeArgs && parsed.typeParameters) {
 					return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
 						getCode(t, typeArgs)
 					)}>`;
 				}
 				return `${Internals}.${variable}`;
 			}
-			case "typeof class": {
-				const variable = typeToVariable.get(parsed.correspondingType);
+			case "namespace": {
+				const variable = typeToVariable.get(type);
+				queueDeclaration(type, variable, () => {
+					const exports = [];
+					const declarations = [];
+					for (const [
+						name,
+						{ type: exportedType, optional, readonly, method },
+					] of parsed.exports) {
+						const code = getCode(exportedType, new Set());
+						if (code.startsWith(`typeof ${Internals}.`)) {
+							exports.push(
+								`${code.slice(`typeof ${Internals}.`.length)} as ${name}`
+							);
+						} else {
+							declarations.push(
+								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
+							);
+						}
+					}
+					if (type === exposedType) {
+						for (const [name, type] of typeExports) {
+							const code = getCode(type, new Set());
+							if (code.startsWith(`${Internals}.`)) {
+								exports.push(
+									`${code.slice(`${Internals}.`.length)} as ${name}`
+								);
+							} else {
+								declarations.push(`export type ${name} = ${code};\n`);
+							}
+						}
+					}
+					return `${parsed.calls
+						.map(
+							(call) =>
+								`export function ${variable}${sigToString(
+									call,
+									new Set(),
+									"method"
+								)};\n`
+						)
+						.join("")}export namespace ${variable} {\n${declarations.join("")}${
+						exports.length > 0 ? `export { ${exports.join(", ")} }` : ""
+					}\n}`;
+				});
 				return `typeof ${Internals}.${variable}`;
 			}
-			case "namespace":
 			case "symbol": {
 				const variable = typeToVariable.get(type);
+				queueDeclaration(
+					type,
+					variable,
+					() => `export const ${variable}: unique symbol;`
+				);
 				return `typeof ${Internals}.${variable}`;
 			}
 			case "import": {
-				return typeToVariable.get(type);
-			}
-			default: {
 				const variable = typeToVariable.get(type);
-				if (variable !== undefined) {
-					return `${Internals}.${variable}`;
-				}
+				addImport(parsed.exportName, variable, parsed.from);
+				return variable;
 			}
 		}
 		return `unknown /* failed to generate code: ${parsed.type} */`;
@@ -1663,140 +1788,6 @@ const printError = (diagnostic) => {
 		return newCode;
 	};
 
-	for (const [type, parsed] of parsedCollectedTypes) {
-		switch (parsed.type) {
-			case "interface": {
-				const name = typeToVariable.get(type);
-				if (name) {
-					codeGenerationContext = name;
-					const typeArgs = new Set(parsed.typeParameters);
-					addDeclaration(
-						name,
-						`${getDocumentation(type.getSymbol())}export interface ${name}${
-							parsed.typeParameters
-								? `<${parsed.typeParameters
-										.map((t) => getCode(t, new Set()))
-										.join(", ")}>`
-								: ""
-						}${
-							parsed.baseTypes.length > 0
-								? ` extends ${parsed.baseTypes
-										.map((t) => getCode(t, typeArgs))
-										.join(", ")}`
-								: ""
-						} {\n${getInterfaceItems(type, parsed, typeArgs)
-							.map((i) => `\t${i};`)
-							.join("\n")}\n}`
-					);
-					codeGenerationContext = "";
-				}
-				break;
-			}
-			case "class": {
-				const name = typeToVariable.get(type);
-				if (name) {
-					codeGenerationContext = name;
-					const typeArgs = new Set(parsed.typeParameters);
-					addDeclaration(
-						name,
-						`export ${
-							parsed.constructors.length === 0 ? "abstract class" : "class"
-						} ${name}${
-							parsed.typeParameters
-								? `<${parsed.typeParameters
-										.map((t) => getCode(t, new Set()))
-										.join(", ")}>`
-								: ""
-						}${
-							parsed.baseType
-								? ` extends ${getCode(parsed.baseType, typeArgs)}`
-								: ""
-						} {\n${getInterfaceItems(type, parsed, typeArgs)
-							.map((i) => `\t${i};`)
-							.join("\n")}\n}`
-					);
-					codeGenerationContext = "";
-				}
-				break;
-			}
-			case "namespace": {
-				const name = typeToVariable.get(type);
-				if (name) {
-					codeGenerationContext = name;
-					const exports = [];
-					const declarations = [];
-					for (const [
-						name,
-						{ type: exportedType, optional, readonly, method },
-					] of parsed.exports) {
-						const code = getCode(exportedType, new Set());
-						if (code.startsWith(`typeof ${Internals}.`)) {
-							exports.push(
-								`${code.slice(`typeof ${Internals}.`.length)} as ${name}`
-							);
-						} else {
-							declarations.push(
-								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
-							);
-						}
-					}
-					if (type === exposedType) {
-						for (const [name, type] of typeExports) {
-							const code = getCode(type, new Set());
-							if (code.startsWith(`${Internals}.`)) {
-								exports.push(
-									`${code.slice(`${Internals}.`.length)} as ${name}`
-								);
-							} else {
-								declarations.push(`export type ${name} = ${code};\n`);
-							}
-						}
-					}
-					addDeclaration(
-						name,
-						`${parsed.calls
-							.map(
-								(call) =>
-									`export function ${name}${sigToString(
-										call,
-										new Set(),
-										"method"
-									)};\n`
-							)
-							.join("")}export namespace ${name} {\n${declarations.join("")}${
-							exports.length > 0 ? `export { ${exports.join(", ")} }` : ""
-						}\n}`
-					);
-					codeGenerationContext = "";
-				}
-				break;
-			}
-			case "union":
-			case "intersection":
-				const name = typeToVariable.get(type);
-				if (name) {
-					addDeclaration(
-						name,
-						`export type ${name} = ${parsed.types
-							.map((t) => getCode(t, new Set()))
-							.join(parsed.type === "intersection" ? " & " : " | ")
-							.replace(/(^|\| )false \| true($| \|)/g, "$1boolean$2")};`
-					);
-				}
-				break;
-			case "symbol": {
-				const name = typeToVariable.get(type);
-				addDeclaration(name, `export const ${name}: unique symbol;`);
-				break;
-			}
-			case "import": {
-				const name = typeToVariable.get(type);
-				addImport(parsed.exportName, name, parsed.from);
-				break;
-			}
-		}
-	}
-
 	if (exposedType) {
 		const code = getCode(exposedType, new Set());
 		if (code.startsWith("typeof ")) {
@@ -1806,6 +1797,10 @@ const printError = (diagnostic) => {
 			exports.push(`declare const ${exportsName}: ${code};`);
 			exports.push(`export = ${exportsName};`);
 		}
+	}
+
+	for (const [, fn] of emitDeclarations) {
+		fn();
 	}
 
 	const outputFilePath = path.resolve(root, outputFile);
