@@ -1115,9 +1115,9 @@ const printError = (diagnostic) => {
 		}
 		if (exposedType !== type && parsed.subtype !== "module") {
 			if (typeUsedAsReturnValue.has(type)) continue;
-			// TODO heuristic
+			// heuristic: only referenced from other namespaces
 			if (
-				!Array.from(typeReferencedBy.get(type), (t) =>
+				!Array.from(typeReferencedBy.get(type) || [], (t) =>
 					parsedCollectedTypes.get(t)
 				).every((p) => p.type === "namespace")
 			) {
