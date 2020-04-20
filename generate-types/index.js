@@ -11,7 +11,7 @@ process.exitCode = 1;
 let exitCode = 0;
 
 const AnonymousType = "__Type";
-const Internals = "internals";
+const Internals = require(path.join(root, "package.json")).name;
 
 const IDENTIFIER_NAME_REPLACE_REGEX = /^([^a-zA-Z$_])/;
 const IDENTIFIER_ALPHA_NUMERIC_NAME_REPLACE_REGEX = /[^a-zA-Z0-9$]+/g;
@@ -431,7 +431,8 @@ const printError = (diagnostic) => {
 		}
 	}
 
-	/** @typedef {{ signature: ts.Signature, typeParameters?: readonly ts.Type[], args: { name: string, optional: boolean, spread: boolean, type: ts.Type }[], returnType: ts.Type }} ParsedSignature */
+	/** @typedef {{ name: string, optional: boolean, spread: boolean, type: ts.Type }} ParsedParameter */
+	/** @typedef {{ signature: ts.Signature, typeParameters?: readonly ts.Type[], args: ParsedParameter[], thisType: ts.Type, returnType: ts.Type }} ParsedSignature */
 	/** @typedef {string[]} SymbolName */
 	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean }>} PropertiesMap */
 
@@ -517,6 +518,52 @@ const printError = (diagnostic) => {
 	 */
 	const parseSignature = (signature) => {
 		let canBeOptional = true;
+		/**
+		 * @param {ts.Symbol} p parameter
+		 * @returns {ParsedParameter} parsed
+		 */
+		const parseParameter = (p) => {
+			const paramDeclaration =
+				p.valueDeclaration && ts.isParameter(p.valueDeclaration)
+					? p.valueDeclaration
+					: undefined;
+			let jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration &&
+			p.valueDeclaration.kind === ts.SyntaxKind.JSDocParameterTag
+				? /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration)
+				: undefined);
+			if (!jsdocParamDeclaration && p.valueDeclaration) {
+				const jsdoc = ts.getJSDocTags(p.valueDeclaration);
+				if (
+					jsdoc.length > 0 &&
+					jsdoc[0].kind === ts.SyntaxKind.JSDocParameterTag
+				) {
+					jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (jsdoc[0]);
+				}
+			}
+			const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
+			const optional =
+				canBeOptional &&
+				((type.getFlags() & ts.TypeFlags.Any) !== 0 ||
+					(p.getFlags() & ts.SymbolFlags.Optional) !== 0 ||
+					(paramDeclaration && !!paramDeclaration.initializer) ||
+					(jsdocParamDeclaration &&
+						jsdocParamDeclaration.typeExpression &&
+						jsdocParamDeclaration.typeExpression.type.kind ===
+							ts.SyntaxKind.JSDocOptionalType));
+			canBeOptional = canBeOptional && optional;
+			const spread =
+				(paramDeclaration && !!paramDeclaration.dotDotDotToken) ||
+				(jsdocParamDeclaration &&
+					jsdocParamDeclaration.typeExpression &&
+					jsdocParamDeclaration.typeExpression.type.kind ===
+						ts.SyntaxKind.JSDocVariadicType);
+			return {
+				name: p.name,
+				optional,
+				spread,
+				type,
+			};
+		};
 		return {
 			signature,
 			typeParameters:
@@ -527,35 +574,15 @@ const printError = (diagnostic) => {
 				.getParameters()
 				.slice()
 				.reverse()
-				.map((p) => {
-					const paramDeclaration =
-						p.valueDeclaration && ts.isParameter(p.valueDeclaration)
-							? p.valueDeclaration
-							: undefined;
-					const jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration &&
-					p.valueDeclaration.kind === ts.SyntaxKind.JSDocParameterTag
-						? /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration)
-						: undefined);
-					const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
-					const optional =
-						canBeOptional &&
-						((type.getFlags() & ts.TypeFlags.Any) !== 0 ||
-							(p.getFlags() & ts.SymbolFlags.Optional) !== 0 ||
-							(paramDeclaration && !!paramDeclaration.initializer) ||
-							(jsdocParamDeclaration &&
-								jsdocParamDeclaration.typeExpression &&
-								jsdocParamDeclaration.typeExpression.type.kind ===
-									ts.SyntaxKind.JSDocOptionalType));
-					canBeOptional = canBeOptional && optional;
-					return {
-						name: p.name,
-						optional,
-						spread: paramDeclaration && !!paramDeclaration.dotDotDotToken,
-						type,
-					};
-				})
+				.map(parseParameter)
 				.reverse(),
 			returnType: signature.getReturnType(),
+			thisType: signature.thisParameter
+				? checker.getTypeOfSymbolAtLocation(
+						signature.thisParameter,
+						signature.thisParameter.valueDeclaration
+				  )
+				: undefined,
 		};
 	};
 
@@ -573,9 +600,9 @@ const printError = (diagnostic) => {
 			/** @type {PropertiesMap} */
 			const properties = new Map();
 			for (const prop of symbols) {
-				const name = prop.name;
+				let name = prop.name;
 				if (name === "prototype") continue;
-				if (name.startsWith("_")) continue;
+				if (name.startsWith("_") && !/^__@[^@]+$/.test(name)) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
 				let innerType = prop.type;
@@ -590,6 +617,7 @@ const printError = (diagnostic) => {
 					continue;
 				}
 				const flags = prop.getFlags();
+				if (name.startsWith("__@")) name = `[Symbol.${name.slice(3)}]`;
 				properties.set(name, {
 					type: innerType,
 					method: (flags & ts.SymbolFlags.Method) !== 0,
@@ -862,6 +890,10 @@ const printError = (diagnostic) => {
 					}
 					typeUsedAsReturnValue.add(call.returnType);
 					captureType(type, call.returnType);
+					if (call.thisType) {
+						typeUsedAsArgument.add(call.thisType);
+						captureType(type, call.thisType);
+					}
 				}
 				for (const construct of parsed.constructors) {
 					for (const arg of construct.args) {
@@ -1033,11 +1065,6 @@ const printError = (diagnostic) => {
 				)
 			) {
 				const interfaceSubtypes = /** @type {ParsedInterfaceType[]} */ (subtypes);
-				console.log(
-					`merged ${interfaceSubtypes
-						.map((p) => p.symbolName.join(" "))
-						.join(" & ")}`
-				);
 				const symbol = /** @type {any} */ (type).symbol;
 				const declaration = symbol && getDeclaration(symbol);
 				/** @type {ParsedInterfaceType} */
@@ -1373,7 +1400,12 @@ const printError = (diagnostic) => {
 		if (sig.typeParameters) {
 			for (const t of sig.typeParameters) innerTypeArgs.add(t);
 		}
-		const args = `(${sig.args
+		const args = `(${
+			sig.thisType
+				? `this: ${getCode(sig.thisType, innerTypeArgs)}` +
+				  (sig.args.length > 0 ? ", " : "")
+				: ""
+		} ${sig.args
 			.map(
 				(arg) =>
 					`${arg.spread ? "..." : ""}${arg.name}${
@@ -1716,7 +1748,7 @@ const printError = (diagnostic) => {
 									`${code.slice(`${Internals}.`.length)} as ${name}`
 								);
 							} else {
-								declarations.push(`export const ${name}: ${code};\n`);
+								declarations.push(`export type ${name} = ${code};\n`);
 							}
 						}
 					}

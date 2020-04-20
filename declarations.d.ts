@@ -9,4 +9,7 @@ declare module "typescript" {
 	interface Declaration {
 		expression?: ts.Expression;
 	}
+	interface Signature {
+		thisParameter?: Symbol;
+	}
 }
