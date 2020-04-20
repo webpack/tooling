@@ -1562,10 +1562,10 @@ const printError = (diagnostic) => {
 	/**
 	 * @param {ts.Type} type the type
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
-	 * @param {boolean} hasTypeArgs true, if it has type args specified
+	 * @param {string} state generation state
 	 * @returns {string} code
 	 */
-	const getCodeInternal = (type, typeArgs, hasTypeArgs) => {
+	const getCodeInternal = (type, typeArgs, state) => {
 		const parsed = parsedCollectedTypes.get(type);
 		if (!parsed) return "unknown /* no parsed data */";
 		switch (parsed.type) {
@@ -1596,7 +1596,7 @@ const printError = (diagnostic) => {
 			}
 			case "reference": {
 				if (parsed.typeArguments.length === 0)
-					return getCode(parsed.target, typeArgs, hasTypeArgs);
+					return getCode(parsed.target, typeArgs, state);
 				const parsedTarget = parsedCollectedTypes.get(parsed.target);
 				if (
 					parsedTarget &&
@@ -1610,7 +1610,7 @@ const printError = (diagnostic) => {
 				return `${getCode(
 					parsed.target,
 					typeArgs,
-					true
+					"with type args"
 				)}<${parsed.typeArguments
 					.map((t) => getCode(t, typeArgs))
 					.join(", ")}>`;
@@ -1638,7 +1638,7 @@ const printError = (diagnostic) => {
 							.map((i) => `\t${i};`)
 							.join("\n")}\n}`;
 					});
-					if (!hasTypeArgs && parsed.typeParameters) {
+					if (state !== "with type args" && parsed.typeParameters) {
 						return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs)
 						)}>`;
@@ -1679,7 +1679,7 @@ const printError = (diagnostic) => {
 				if (parsed.type === "typeof class") {
 					return `typeof ${Internals}.${variable}`;
 				}
-				if (!hasTypeArgs && parsed.typeParameters) {
+				if (state !== "with type args" && parsed.typeParameters) {
 					return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
 						getCode(t, typeArgs)
 					)}>`;
@@ -1687,16 +1687,24 @@ const printError = (diagnostic) => {
 				return `${Internals}.${variable}`;
 			}
 			case "namespace": {
-				const variable = typeToVariable.get(type);
-				queueDeclaration(type, variable, () => {
+				const ns = (variable) => {
 					const exports = [];
 					const declarations = [];
 					for (const [
 						name,
 						{ type: exportedType, optional, readonly, method },
 					] of parsed.exports) {
-						const code = getCode(exportedType, new Set());
-						if (code.startsWith(`typeof ${Internals}.`)) {
+						const code = getCode(
+							exportedType,
+							new Set(),
+							`in namespace ${name}`
+						);
+						if (
+							code.startsWith("export namespace") ||
+							code.startsWith("export function")
+						) {
+							declarations.push(code);
+						} else if (code.startsWith(`typeof ${Internals}.`)) {
 							exports.push(
 								`${code.slice(`typeof ${Internals}.`.length)} as ${name}`
 							);
@@ -1730,7 +1738,12 @@ const printError = (diagnostic) => {
 						.join("")}export namespace ${variable} {\n${declarations.join("")}${
 						exports.length > 0 ? `export { ${exports.join(", ")} }` : ""
 					}\n}`;
-				});
+				};
+				if (state.startsWith("in namespace ")) {
+					return ns(state.slice("in namespace ".length));
+				}
+				const variable = typeToVariable.get(type);
+				queueDeclaration(type, variable, () => ns(variable));
 				return `typeof ${Internals}.${variable}`;
 			}
 			case "symbol": {
@@ -1758,11 +1771,11 @@ const printError = (diagnostic) => {
 	/**
 	 * @param {ts.Type} type the type
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
-	 * @param {boolean} hasTypeArgs true, if it has type args specified
+	 * @param {string} state generation state
 	 * @returns {string} code
 	 */
-	const getCode = (type, typeArgs, hasTypeArgs = false) => {
-		const tuple = [type, ...typeArgs, hasTypeArgs];
+	const getCode = (type, typeArgs, state = "") => {
+		const tuple = [type, ...typeArgs, state];
 		const code = typeToCode.get(tuple);
 		if (code !== undefined) {
 			unusedTempNames.delete(tuple);
@@ -1776,7 +1789,7 @@ const printError = (diagnostic) => {
 		);
 		typeToCode.set(tuple, tempName);
 		unusedTempNames.add(tuple);
-		const newCode = getCodeInternal(type, typeArgs, hasTypeArgs);
+		const newCode = getCodeInternal(type, typeArgs, state);
 		const used = !unusedTempNames.has(tuple);
 		unusedTempNames.delete(tuple);
 		if (used) {
