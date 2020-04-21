@@ -11,7 +11,6 @@ process.exitCode = 1;
 let exitCode = 0;
 
 const AnonymousType = "__Type";
-const Internals = require(path.join(root, "package.json")).name;
 
 const IDENTIFIER_NAME_REPLACE_REGEX = /^([^a-zA-Z$_])/;
 const IDENTIFIER_ALPHA_NUMERIC_NAME_REPLACE_REGEX = /[^a-zA-Z0-9$]+/g;
@@ -198,7 +197,7 @@ const printError = (diagnostic) => {
 	const rootPath = path.resolve(root);
 
 	const ownConfigPath = path.resolve(rootPath, "generate-types-config.js");
-	const options = { nameMapping: {} };
+	const options = { nameMapping: {}, exclude: [] };
 	try {
 		Object.assign(options, require(ownConfigPath));
 	} catch (e) {
@@ -449,6 +448,10 @@ const printError = (diagnostic) => {
 	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedImportType | ParsedSymbolType} ParsedType */
 	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
+	const isExcluded = (name) => {
+		return options.exclude.some((e) => e.test(name));
+	};
+
 	/**
 	 * @param {ts.Type=} type the type
 	 * @param {string[]=} suffix additional suffix
@@ -594,14 +597,16 @@ const printError = (diagnostic) => {
 		/**
 		 * @param {ts.Symbol[]} symbols list of symbols
 		 * @param {ts.Type[]=} baseTypes base types from which properties should be omitted
+		 * @param {SymbolName} symbolName name
 		 * @returns {PropertiesMap} map of types
 		 */
-		const toPropMap = (symbols, baseTypes = []) => {
+		const toPropMap = (symbols, baseTypes = [], symbolName = []) => {
 			/** @type {PropertiesMap} */
 			const properties = new Map();
 			for (const prop of symbols) {
 				let name = prop.name;
 				if (name === "prototype") continue;
+				if (isExcluded(`${name} in ${symbolName.join(" ")}`)) continue;
 				if (name.startsWith("_") && !/^__@[^@]+$/.test(name)) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
@@ -685,7 +690,7 @@ const printError = (diagnostic) => {
 				type: "interface",
 				symbolName: [AnonymousType, "Literal"],
 				subtype: "literal",
-				properties: toPropMap(type.getProperties()),
+				properties: toPropMap(type.getProperties(), undefined, ["Literal"]),
 				constructors: [],
 				calls: [],
 				baseTypes: [],
@@ -817,7 +822,11 @@ const printError = (diagnostic) => {
 				: declaration && declaration.kind === ts.SyntaxKind.SourceFile
 				? "module"
 				: undefined,
-			properties: toPropMap(type.getProperties(), type.getBaseTypes()),
+			properties: toPropMap(
+				type.getProperties(),
+				type.getBaseTypes(),
+				symbolName
+			),
 			constructors: type.getConstructSignatures().map(parseSignature),
 			calls: type.getCallSignatures().map(parseSignature),
 			numberIndex: type.getNumberIndexType(),
@@ -1252,6 +1261,8 @@ const printError = (diagnostic) => {
 
 	/// Determine names for types ///
 
+	const usedNames = new Set([AnonymousType]);
+
 	/** @type {[ts.Type, {symbolName: SymbolName}][]} */
 	const needName = [];
 	for (const [type, parsed] of parsedCollectedTypes) {
@@ -1282,12 +1293,26 @@ const printError = (diagnostic) => {
 				needName.push([type, parsed]);
 				break;
 			}
+			case "namespace": {
+				for (const [name, exp] of parsed.exports) {
+					const parsedExport = parsedCollectedTypes.get(exp.type);
+					if (
+						parsedExport.type === "typeof class" ||
+						parsedExport.type === "namespace" ||
+						parsedExport.type === "symbol"
+					) {
+						continue;
+					}
+					usedNames.add(name);
+				}
+				needName.push([type, parsed]);
+				break;
+			}
 		}
 	}
 
 	const { nameMapping } = options;
 
-	const usedNames = new Set([Internals, AnonymousType]);
 	const nameToQueueEntry = new Map();
 	const findName = (symbolName, requeueOnConflict = false) => {
 		const key = symbolName.join(" ");
@@ -1588,9 +1613,9 @@ const printError = (diagnostic) => {
 					queueDeclaration(
 						type,
 						variable,
-						() => `export type ${variable} = ${code(new Set())};`
+						() => `type ${variable} = ${code(new Set())};`
 					);
-					return `${Internals}.${variable}`;
+					return `${variable}`;
 				}
 				return code(typeArgs);
 			}
@@ -1622,7 +1647,7 @@ const printError = (diagnostic) => {
 						const typeArgs = new Set(parsed.typeParameters);
 						return `${getDocumentation(
 							type.getSymbol()
-						)}export interface ${variable}${
+						)}declare interface ${variable}${
 							parsed.typeParameters
 								? `<${parsed.typeParameters
 										.map((t) => getCode(t, new Set()))
@@ -1639,11 +1664,11 @@ const printError = (diagnostic) => {
 							.join("\n")}\n}`;
 					});
 					if (state !== "with type args" && parsed.typeParameters) {
-						return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
+						return `${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs)
 						)}>`;
 					}
-					return `${Internals}.${variable}`;
+					return `${variable}`;
 				}
 				if (isSimpleFunction(parsed)) {
 					return `(${sigToString(parsed.calls[0], typeArgs, "arrow")})`;
@@ -1660,7 +1685,7 @@ const printError = (diagnostic) => {
 						classType
 					));
 					const typeArgs = new Set(parsed.typeParameters);
-					return `export ${
+					return `declare ${
 						parsed.constructors.length === 0 ? "abstract class" : "class"
 					} ${variable}${
 						parsed.typeParameters
@@ -1677,17 +1702,17 @@ const printError = (diagnostic) => {
 						.join("\n")}\n}`;
 				});
 				if (parsed.type === "typeof class") {
-					return `typeof ${Internals}.${variable}`;
+					return `typeof ${variable}`;
 				}
 				if (state !== "with type args" && parsed.typeParameters) {
-					return `${Internals}.${variable}<${parsed.typeParameters.map((t) =>
+					return `${variable}<${parsed.typeParameters.map((t) =>
 						getCode(t, typeArgs)
 					)}>`;
 				}
-				return `${Internals}.${variable}`;
+				return `${variable}`;
 			}
 			case "namespace": {
-				const ns = (variable) => {
+				const ns = (variable, exportNamespace) => {
 					const exports = [];
 					const declarations = [];
 					for (const [
@@ -1699,15 +1724,10 @@ const printError = (diagnostic) => {
 							new Set(),
 							`in namespace ${name}`
 						);
-						if (
-							code.startsWith("export namespace") ||
-							code.startsWith("export function")
-						) {
+						if (code.startsWith("export ")) {
 							declarations.push(code);
-						} else if (code.startsWith(`typeof ${Internals}.`)) {
-							exports.push(
-								`${code.slice(`typeof ${Internals}.`.length)} as ${name}`
-							);
+						} else if (/^typeof [A-Za-z_0-9]+$/.test(code)) {
+							exports.push(`${code.slice(`typeof `.length)} as ${name}`);
 						} else {
 							declarations.push(
 								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
@@ -1717,10 +1737,8 @@ const printError = (diagnostic) => {
 					if (type === exposedType) {
 						for (const [name, type] of typeExports) {
 							const code = getCode(type, new Set());
-							if (code.startsWith(`${Internals}.`)) {
-								exports.push(
-									`${code.slice(`${Internals}.`.length)} as ${name}`
-								);
+							if (/^[A-Za-z_0-9]+$/.test(code)) {
+								exports.push(`${code} as ${name}`);
 							} else {
 								declarations.push(`export type ${name} = ${code};\n`);
 							}
@@ -1729,31 +1747,35 @@ const printError = (diagnostic) => {
 					return `${parsed.calls
 						.map(
 							(call) =>
-								`export function ${variable}${sigToString(
+								`${
+									exportNamespace ? "export" : "declare"
+								} function ${variable}${sigToString(
 									call,
 									new Set(),
 									"method"
 								)};\n`
 						)
-						.join("")}export namespace ${variable} {\n${declarations.join("")}${
+						.join("")}${
+						exportNamespace ? "export" : "declare"
+					} namespace ${variable} {\n${declarations.join("")}${
 						exports.length > 0 ? `export { ${exports.join(", ")} }` : ""
 					}\n}`;
 				};
 				if (state.startsWith("in namespace ")) {
-					return ns(state.slice("in namespace ".length));
+					return ns(state.slice("in namespace ".length), true);
 				}
 				const variable = typeToVariable.get(type);
 				queueDeclaration(type, variable, () => ns(variable));
-				return `typeof ${Internals}.${variable}`;
+				return `typeof ${variable}`;
 			}
 			case "symbol": {
 				const variable = typeToVariable.get(type);
 				queueDeclaration(
 					type,
 					variable,
-					() => `export const ${variable}: unique symbol;`
+					() => `declare const ${variable}: unique symbol;`
 				);
-				return `typeof ${Internals}.${variable}`;
+				return `typeof ${variable}`;
 			}
 			case "import": {
 				const variable = typeToVariable.get(type);
@@ -1843,9 +1865,7 @@ const printError = (diagnostic) => {
 			),
 		...[...importDeclarations].sort(),
 		"",
-		`declare namespace ${Internals} {`,
 		...sortedDeclarations,
-		"}",
 		"",
 		...exports,
 	].join("\n");
