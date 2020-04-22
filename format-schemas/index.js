@@ -6,6 +6,22 @@ const fs = require("fs");
 const glob = require("glob");
 const prettier = require("prettier");
 
+const schemas = glob.sync(schemasGlob, { cwd: root, absolute: true });
+const minSlashes = schemas
+	.map((p) => p.split(/[\\/]/).length)
+	.reduce((a, b) => Math.min(a, b), Infinity);
+const baseSchemaPaths = schemas.filter(
+	(p) => p.split(/[\\/]/).length === minSlashes
+);
+const baseDefinitions = new Map();
+for (const baseSchemaPath of baseSchemaPaths) {
+	for (const [name, schema] of Object.entries(
+		require(baseSchemaPath).definitions
+	)) {
+		baseDefinitions.set(name, schema);
+	}
+}
+
 const sortObjectAlphabetically = (obj) => {
 	const keys = Object.keys(obj).sort();
 	const newObj = {};
@@ -101,6 +117,16 @@ const NESTED_ARRAY = ["oneOf", "anyOf", "allOf"];
 const processJson = (json) => {
 	json = sortObjectWithList(json, PROPERTIES);
 
+	if (json.definitions) {
+		json.definitions = { ...json.definitions };
+		for (const key of Object.keys(json.definitions)) {
+			const baseDef = baseDefinitions.get(key);
+			if (baseDef) {
+				json.definitions[key] = baseDef;
+			}
+		}
+	}
+
 	for (const name of NESTED_WITH_NAME) {
 		if (name in json && json[name] && typeof json[name] === "object") {
 			json[name] = sortObjectAlphabetically(json[name]);
@@ -150,7 +176,6 @@ const formatSchema = (schemaPath) => {
 	}
 };
 
-// search for all nestedDirs inside of this folder
-for (let absPath of glob.sync(schemasGlob, { cwd: root, absolute: true })) {
+for (let absPath of schemas) {
 	formatSchema(absPath);
 }
