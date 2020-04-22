@@ -714,9 +714,10 @@ const printError = (diagnostic) => {
 			const typeRef = /** @type {ts.TypeReference} */ (type);
 			const typeArguments = checker.getTypeArguments(typeRef);
 			if (objectFlags & ts.ObjectFlags.Tuple) {
+				const tupleType = /** @type {ts.TupleType} */ (type);
 				return {
 					type: "primitive",
-					name: "[]",
+					name: tupleType.hasRestElement ? "[...]" : "[]",
 				};
 			}
 			if (typeRef !== typeRef.target) {
@@ -1623,14 +1624,16 @@ const printError = (diagnostic) => {
 				if (parsed.typeArguments.length === 0)
 					return getCode(parsed.target, typeArgs, state);
 				const parsedTarget = parsedCollectedTypes.get(parsed.target);
-				if (
-					parsedTarget &&
-					parsedTarget.type === "primitive" &&
-					parsedTarget.name === "[]"
-				) {
-					return `[${parsed.typeArguments
-						.map((t) => getCode(t, typeArgs))
-						.join(", ")}]`;
+				if (parsedTarget && parsedTarget.type === "primitive") {
+					if (parsedTarget.name === "[]") {
+						return `[${parsed.typeArguments
+							.map((t) => getCode(t, typeArgs))
+							.join(", ")}]`;
+					} else if (parsedTarget.name === "[...]") {
+						const items = parsed.typeArguments.map((t) => getCode(t, typeArgs));
+						const last = items.pop();
+						return `[${items.join(", ")}, ...(${last})[]]`;
+					}
 				}
 				return `${getCode(
 					parsed.target,
