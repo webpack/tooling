@@ -1669,6 +1669,11 @@ const printError = (diagnostic) => {
 						const items = parsed.typeArguments.map((t) => getCode(t, typeArgs));
 						const last = items.pop();
 						return `[${items.join(", ")}, ...(${last})[]]`;
+					} else if (
+						parsedTarget.name === "Array" &&
+						parsed.typeArguments.length === 1
+					) {
+						return `(${getCode(parsed.typeArguments[0], typeArgs)})[]`;
 					}
 				}
 				return `${getCode(
