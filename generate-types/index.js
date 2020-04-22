@@ -1178,6 +1178,19 @@ const printError = (diagnostic) => {
 	 */
 	const getTypeHash = (parsed) => {
 		switch (parsed.type) {
+			case "primitive": {
+				return [parsed.type, parsed.name];
+			}
+			case "reference": {
+				const { target, typeArguments } = parsed;
+				if (typeArguments.length === 0) return undefined;
+				return [parsed.type, target, ...typeArguments];
+			}
+			case "union":
+			case "intersection": {
+				const { symbolName, types } = parsed;
+				return [parsed.type, symbolName[0], ...types];
+			}
 			case "interface": {
 				const {
 					symbolName,
@@ -1207,6 +1220,7 @@ const printError = (diagnostic) => {
 					typeParameters && typeParameters.map((t, i) => [t, i])
 				);
 				return [
+					parsed.type,
 					symbolName[0],
 					"base",
 					...baseTypes,
@@ -1238,25 +1252,47 @@ const printError = (diagnostic) => {
 	};
 
 	const knownTypes = new TupleMap();
-	for (const [type, parsed] of parsedCollectedTypes) {
-		if (!("symbolName" in parsed)) continue;
-		const hash = getTypeHash(parsed);
-		if (!hash) continue;
-		const otherType = knownTypes.get(hash);
-		if (otherType) {
-			const otherParsed = parsedCollectedTypes.get(otherType);
-			if (!("symbolName" in otherParsed)) continue;
-			const commonSymbolName = otherParsed.symbolName.filter((n) =>
-				parsed.symbolName.includes(n)
-			);
-			otherParsed.symbolName = commonSymbolName;
-			parsedCollectedTypes.set(type, {
-				type: "reference",
-				target: otherType,
-				typeArguments: [],
+	let updates = true;
+	while (updates) {
+		updates = false;
+		for (const [type, parsed] of parsedCollectedTypes) {
+			const hash = getTypeHash(parsed);
+			if (!hash) continue;
+			const mappedHash = hash.map((item) => {
+				let parsed = parsedCollectedTypes.get(item);
+				if (!parsed) return item;
+				while (
+					parsed.type === "reference" &&
+					parsed.typeArguments.length === 0
+				) {
+					parsed = parsedCollectedTypes.get(parsed.target);
+				}
+				return parsed;
 			});
-		} else {
-			knownTypes.set(hash, type);
+			const otherType = knownTypes.get(mappedHash);
+			if (otherType && otherType !== type) {
+				const otherParsed = parsedCollectedTypes.get(otherType);
+				if (otherParsed === parsed) continue;
+				if ("symbolName" in otherParsed && "symbolName" in parsed) {
+					const commonSymbolName = otherParsed.symbolName.filter((n) =>
+						parsed.symbolName.includes(n)
+					);
+					otherParsed.symbolName = commonSymbolName;
+				}
+				parsedCollectedTypes.set(
+					type,
+					otherParsed.type === "primitive" || otherParsed.type === "reference"
+						? otherParsed
+						: {
+								type: "reference",
+								target: otherType,
+								typeArguments: [],
+						  }
+				);
+				updates = true;
+			} else {
+				knownTypes.set(mappedHash, type);
+			}
 		}
 	}
 
