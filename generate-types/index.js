@@ -1957,6 +1957,7 @@ const printError = (diagnostic) => {
 	if (needUpdate) {
 		if (doWrite) {
 			await fs.writeFile(outputFilePath, source);
+			console.error("types.d.ts updated.");
 		} else {
 			exitCode = 1;
 			console.error("types.d.ts need to be updated.");
