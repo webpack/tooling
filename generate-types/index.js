@@ -430,14 +430,14 @@ const printError = (diagnostic) => {
 		}
 	}
 
-	/** @typedef {{ name: string, optional: boolean, spread: boolean, type: ts.Type }} ParsedParameter */
-	/** @typedef {{ signature: ts.Signature, typeParameters?: readonly ts.Type[], args: ParsedParameter[], thisType: ts.Type, returnType: ts.Type }} ParsedSignature */
+	/** @typedef {{ name: string, optional: boolean, spread: boolean, documentation: string, type: ts.Type }} ParsedParameter */
+	/** @typedef {{ documentation: string, typeParameters?: readonly ts.Type[], args: ParsedParameter[], thisType: ts.Type, returnType: ts.Type }} ParsedSignature */
 	/** @typedef {string[]} SymbolName */
-	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean }>} PropertiesMap */
+	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, documentation: string }>} PropertiesMap */
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
 	/** @typedef {{ type: "tuple", typeArguments: readonly ts.Type[] }} ParsedTupleType */
-	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[] }} ParsedInterfaceType */
+	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[], documentation: string }} ParsedInterfaceType */
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
 	/** @typedef {{ type: "namespace", symbolName: SymbolName, calls: ParsedSignature[], exports: PropertiesMap }} MergedNamespaceType */
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[] }} ParsedReferenceType */
@@ -516,6 +516,20 @@ const printError = (diagnostic) => {
 	};
 
 	/**
+	 * @param {ts.Symbol | ts.Signature | undefined} symbol symbol
+	 * @returns {string} documentation comment
+	 */
+	const getDocumentation = (symbol) => {
+		if (!symbol) return "";
+		const comments = symbol.getDocumentationComment(checker);
+		if (comments.length === 0) return "";
+		return `\n/**\n * ${comments
+			.map((c) => c.text)
+			.join("\n")
+			.replace(/\n+/g, "\n * ")}\n */\n`;
+	};
+
+	/**
 	 * @param {ts.Signature} signature signature
 	 * @returns {ParsedSignature} parsed signature
 	 */
@@ -560,15 +574,17 @@ const printError = (diagnostic) => {
 					jsdocParamDeclaration.typeExpression &&
 					jsdocParamDeclaration.typeExpression.type.kind ===
 						ts.SyntaxKind.JSDocVariadicType);
+			const documentation = getDocumentation(p);
 			return {
 				name: p.name,
 				optional,
 				spread,
+				documentation,
 				type,
 			};
 		};
 		return {
-			signature,
+			documentation: getDocumentation(signature),
 			typeParameters:
 				signature.typeParameters && signature.typeParameters.length > 0
 					? signature.typeParameters
@@ -631,6 +647,7 @@ const printError = (diagnostic) => {
 						((flags & ts.SymbolFlags.GetAccessor) !== 0 &&
 							(flags & ts.SymbolFlags.SetAccessor) === 0) ||
 						(modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+					documentation: getDocumentation(prop),
 				});
 			}
 			return properties;
@@ -694,6 +711,7 @@ const printError = (diagnostic) => {
 				constructors: [],
 				calls: [],
 				baseTypes: [],
+				documentation: getDocumentation(type.getSymbol()),
 			};
 		}
 
@@ -843,6 +861,7 @@ const printError = (diagnostic) => {
 					  type.aliasTypeArguments.length > 0
 					? type.aliasTypeArguments
 					: undefined,
+			documentation: getDocumentation(symbol),
 		};
 	};
 
@@ -1091,6 +1110,10 @@ const printError = (diagnostic) => {
 					properties: new Map(
 						flatten(interfaceSubtypes.map((p) => p.properties))
 					),
+					documentation: interfaceSubtypes
+						.map((p) => p.documentation)
+						.join("\n")
+						.replace(/\n+/g, "\n"),
 				};
 				parsedCollectedTypes.set(type, newParsed);
 			}
@@ -1153,19 +1176,27 @@ const printError = (diagnostic) => {
 	 * @returns {any[] | undefined} hash
 	 */
 	const getSigHash = (prefix, signature, index) => {
-		const { args, returnType, typeParameters } = signature;
+		const { args, returnType, typeParameters, documentation } = signature;
 		const typeParametersMap = new Map(
 			typeParameters && typeParameters.map((t, i) => [t, i])
 		);
 		return [
 			"args",
 			...flatten(
-				args.map((arg) => [arg.name, arg.optional, arg.spread, arg.type])
+				args.map((arg) => [
+					arg.name,
+					arg.optional,
+					arg.spread,
+					arg.type,
+					arg.documentation,
+				])
 			),
 			"return",
 			returnType,
 			"typeParameters",
 			typeParameters ? typeParameters.length : 0,
+			"documentation",
+			documentation,
 		].map((item) => {
 			const x = typeParametersMap.get(item);
 			return x === undefined ? item : `${prefix}${index}_${x}`;
@@ -1201,6 +1232,7 @@ const printError = (diagnostic) => {
 					numberIndex,
 					stringIndex,
 					typeParameters,
+					documentation,
 				} = parsed;
 				if (
 					calls.length === 0 &&
@@ -1242,6 +1274,8 @@ const printError = (diagnostic) => {
 					stringIndex,
 					"typeParameters",
 					typeParameters ? typeParameters.length : 0,
+					"documentation",
+					documentation,
 				].map((item) => {
 					const x = typeParametersMap.get(item);
 					return x === undefined ? item : x;
@@ -1460,20 +1494,6 @@ const printError = (diagnostic) => {
 	};
 
 	/**
-	 * @param {ts.Symbol | ts.Signature | undefined} symbol symbol
-	 * @returns {string} documentation comment
-	 */
-	const getDocumentation = (symbol) => {
-		if (!symbol) return "";
-		const comments = symbol.getDocumentationComment(checker);
-		if (comments.length === 0) return "";
-		return `\n/**\n * ${comments
-			.map((c) => c.text)
-			.join("\n")
-			.replace(/\n/g, "\n * ")}\n */\n`;
-	};
-
-	/**
 	 * @param {ParsedSignature} sig the signature
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
 	 * @param {"arrow" | "constructor" | "class-constructor" | "method" | undefined} type type of generated code
@@ -1536,7 +1556,7 @@ const printError = (diagnostic) => {
 		const items = [];
 		for (const construct of parsed.constructors) {
 			items.push(
-				`${getDocumentation(construct.signature)}${sigToString(
+				`${construct.documentation}${sigToString(
 					construct,
 					typeArgs,
 					parsed.type === "interface" ? "constructor" : "class-constructor"
@@ -1545,9 +1565,7 @@ const printError = (diagnostic) => {
 		}
 		if (parsed.type === "interface") {
 			for (const call of parsed.calls) {
-				items.push(
-					`${getDocumentation(call.signature)}${sigToString(call, typeArgs)}`
-				);
+				items.push(`${call.documentation}${sigToString(call, typeArgs)}`);
 			}
 		}
 		if (parsed.numberIndex) {
@@ -1560,7 +1578,7 @@ const printError = (diagnostic) => {
 		const handleProperties = (properties, prefix = "") => {
 			for (const [
 				name,
-				{ type: propType, optional, readonly, method },
+				{ type: propType, optional, readonly, method, documentation },
 			] of properties) {
 				if (method) {
 					let methodInfo = parsedCollectedTypes.get(propType);
@@ -1579,10 +1597,17 @@ const printError = (diagnostic) => {
 						methodInfo.properties.size === 0
 					) {
 						for (const call of methodInfo.calls) {
+							const docs = new Set([
+								documentation,
+								methodInfo.documentation,
+								call.documentation,
+							]);
 							items.push(
-								`${getDocumentation(
-									call.signature
-								)}${prefix}${name}${sigToString(call, typeArgs, "method")}`
+								`${Array.from(docs).join("")}${prefix}${name}${sigToString(
+									call,
+									typeArgs,
+									"method"
+								)}`
 							);
 						}
 						continue;
@@ -1598,18 +1623,14 @@ const printError = (diagnostic) => {
 				const p = prefix + (readonly ? "readonly " : "");
 				if (code.startsWith("(undefined | ") && !optional) {
 					items.push(
-						`${getDocumentation(
-							type.getProperty(name)
-						)}${p}${name}?: (${code.slice("(undefined | ".length)}`
+						`${documentation}${p}${name}?: (${code.slice(
+							"(undefined | ".length
+						)}`
 					);
 				} else if (optional) {
-					items.push(
-						`${getDocumentation(type.getProperty(name))}${p}${name}?: ${code}`
-					);
+					items.push(`${documentation}${p}${name}?: ${code}`);
 				} else {
-					items.push(
-						`${getDocumentation(type.getProperty(name))}${p}${name}: ${code}`
-					);
+					items.push(`${documentation}${p}${name}: ${code}`);
 				}
 			}
 		};
@@ -1689,9 +1710,7 @@ const printError = (diagnostic) => {
 				if (variable !== undefined) {
 					queueDeclaration(type, variable, () => {
 						const typeArgs = new Set(parsed.typeParameters);
-						return `${getDocumentation(
-							type.getSymbol()
-						)}declare interface ${variable}${
+						return `${parsed.documentation}declare interface ${variable}${
 							parsed.typeParameters
 								? `<${parsed.typeParameters
 										.map((t) => getCode(t, new Set()))
