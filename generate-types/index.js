@@ -306,6 +306,7 @@ const printError = (diagnostic) => {
 			moduleSymbol.exports.forEach((symbol, name) => {
 				if (name === ts.InternalSymbolName.ExportEquals) return;
 				const type = checker.getDeclaredTypeOfSymbol(symbol);
+				if (type.getFlags() & ts.TypeFlags.Any) return;
 				map.set(ts.unescapeLeadingUnderscores(name), type);
 			});
 			return map;
@@ -1778,6 +1779,7 @@ const printError = (diagnostic) => {
 				const ns = (variable, exportNamespace) => {
 					const exports = [];
 					const declarations = [];
+					const exposedNames = new Set();
 					for (const [
 						name,
 						{ type: exportedType, optional, readonly, method },
@@ -1799,6 +1801,7 @@ const printError = (diagnostic) => {
 					}
 					if (type === exposedType) {
 						for (const [name, type] of typeExports) {
+							if(exposedNames.has(name)) continue;
 							const code = getCode(type, new Set());
 							if (/^[A-Za-z_0-9]+$/.test(code)) {
 								exports.push(`${code} as ${name}`);
