@@ -44,7 +44,7 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 	preprocessSchema(schema);
 	compile(schema, basename, {
 		bannerComment:
-			"/**\n * This file was automatically generated.\n * DO NOT MODIFY BY HAND.\n * Run `yarn special-lint-fix` to update\n */",
+			"/*\n * This file was automatically generated.\n * DO NOT MODIFY BY HAND.\n * Run `yarn special-lint-fix` to update\n */",
 		unreachableDefinitions: true,
 		style,
 	}).then(
