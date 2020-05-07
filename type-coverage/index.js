@@ -40,7 +40,7 @@ for (const sourceFile of program.getSourceFiles()) {
 			branchMap: {},
 			s: {},
 			f: {},
-			b: {}
+			b: {},
 		};
 		coverageReport[rep.path] = rep;
 		let statementIndex = 0;
@@ -49,7 +49,7 @@ for (const sourceFile of program.getSourceFiles()) {
 		 * @param {ts.Node} node the node to be walked
 		 * @returns {void}
 		 */
-		const walkNode = node => {
+		const walkNode = (node) => {
 			if (ts.isIdentifier(node) || node.kind === ts.SyntaxKind.ThisKeyword) {
 				const type = typeChecker.getTypeAtLocation(node);
 				if (type) {
@@ -59,7 +59,7 @@ for (const sourceFile of program.getSourceFiles()) {
 					);
 					const {
 						line: lineEnd,
-						character: characterEnd
+						character: characterEnd,
 					} = ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
 					const typeText = typeChecker.typeToString(type);
 					let isExternal = false;
@@ -68,7 +68,7 @@ for (const sourceFile of program.getSourceFiles()) {
 					 * @param {ts.Type} type the type to be checked
 					 * @returns {void}
 					 */
-					const checkDecls = type => {
+					const checkDecls = (type) => {
 						if (!type.symbol) return;
 						for (const decl of type.symbol.getDeclarations()) {
 							const sourceFile = decl.getSourceFile();
@@ -90,12 +90,12 @@ for (const sourceFile of program.getSourceFiles()) {
 					rep.statementMap[statementIndex] = {
 						start: {
 							line: line + 1,
-							column: character
+							column: character,
 						},
 						end: {
 							line: lineEnd + 1,
-							column: characterEnd - 1
-						}
+							column: characterEnd - 1,
+						},
 					};
 					rep.s[statementIndex] = isTyped ? typeText.length : 0;
 					statementIndex++;
