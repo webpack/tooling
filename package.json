@@ -13,12 +13,12 @@
     "special-lint": "node lockfile-lint"
   },
   "peerDependencies": {
-    "prettier": "^1.14.3 || ^2.0.2",
-    "typescript": "^3.6.4"
+    "prettier": "*",
+    "typescript": "*"
   },
   "devDependencies": {
     "prettier": "^2.0.2",
-    "typescript": "^3.6.4"
+    "typescript": "^3.9.2"
   },
   "dependencies": {
     "@yarnpkg/lockfile": "^1.1.0",
