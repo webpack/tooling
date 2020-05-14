@@ -1238,7 +1238,9 @@ const printError = (diagnostic) => {
 				if (
 					calls.length === 0 &&
 					constructors.length === 0 &&
-					properties.size === 0
+					properties.size === 0 &&
+					!numberIndex &&
+					!stringIndex
 				) {
 					// need to have something unique
 					return undefined;
@@ -1494,6 +1496,24 @@ const printError = (diagnostic) => {
 		}
 	};
 
+	const extractOptional = (code, optional = false) => {
+		if (code.startsWith("(undefined | ")) {
+			return {
+				code: "(" + code.slice("(undefined | ".length),
+				optional: true,
+			};
+		} else if (code.endsWith(" | undefined)")) {
+			return {
+				code: code.slice(0, -" | undefined)".length) + ")",
+				optional: true,
+			};
+		}
+		return {
+			code,
+			optional,
+		};
+	};
+
 	/**
 	 * @param {ParsedSignature} sig the signature
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
@@ -1508,18 +1528,28 @@ const printError = (diagnostic) => {
 		if (sig.typeParameters) {
 			for (const t of sig.typeParameters) innerTypeArgs.add(t);
 		}
+		let canBeOptional = true;
 		const args = `(${
 			sig.thisType
 				? `this: ${getCode(sig.thisType, innerTypeArgs)}` +
 				  (sig.args.length > 0 ? ", " : "")
 				: ""
 		} ${sig.args
-			.map(
-				(arg) =>
-					`${arg.spread ? "..." : ""}${arg.name}${
-						arg.optional ? "?" : ""
-					}: ${getCode(arg.type, innerTypeArgs)}`
-			)
+			.slice()
+			.reverse()
+			.map((arg) => {
+				const { code, optional } = canBeOptional
+					? extractOptional(getCode(arg.type, innerTypeArgs), arg.optional)
+					: {
+							code: getCode(arg.type, innerTypeArgs),
+							optional: false,
+					  };
+				canBeOptional = canBeOptional || optional;
+				return `${arg.spread ? "..." : ""}${arg.name}${
+					optional ? "?" : ""
+				}: ${code}`;
+			})
+			.reverse()
 			.join(", ")})`;
 		switch (type) {
 			case "arrow":
@@ -1620,15 +1650,12 @@ const printError = (diagnostic) => {
 						);
 					}
 				}
-				const code = getCode(propType, typeArgs);
+				const { code, optional: opt } = extractOptional(
+					getCode(propType, typeArgs),
+					optional
+				);
 				const p = prefix + (readonly ? "readonly " : "");
-				if (code.startsWith("(undefined | ") && !optional) {
-					items.push(
-						`${documentation}${p}${name}?: (${code.slice(
-							"(undefined | ".length
-						)}`
-					);
-				} else if (optional) {
+				if (opt) {
 					items.push(`${documentation}${p}${name}?: ${code}`);
 				} else {
 					items.push(`${documentation}${p}${name}: ${code}`);
@@ -1801,7 +1828,7 @@ const printError = (diagnostic) => {
 					}
 					if (type === exposedType) {
 						for (const [name, type] of typeExports) {
-							if(exposedNames.has(name)) continue;
+							if (exposedNames.has(name)) continue;
 							const code = getCode(type, new Set());
 							if (/^[A-Za-z_0-9]+$/.test(code)) {
 								exports.push(`${code} as ${name}`);
