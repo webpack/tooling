@@ -624,7 +624,8 @@ const printError = (diagnostic) => {
 				let name = prop.name;
 				if (name === "prototype") continue;
 				if (isExcluded(`${name} in ${symbolName.join(" ")}`)) continue;
-				if (name.startsWith("_") && !/^__@[^@]+$/.test(name)) continue;
+				if (name.startsWith("_") && !name.startsWith("__")) continue;
+				if (name.startsWith("__@") && !/^__@[^@]+$/.test(name)) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
 				let innerType = prop.type;
