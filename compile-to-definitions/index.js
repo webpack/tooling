@@ -140,6 +140,11 @@ const preprocessSchema = (schema, root = schema) => {
 			}
 		}
 	}
+	if ("type" in schema && schema.type === "array") {
+		// Workaround for a typescript bug that
+		// string[] is not assignable to [string, ...string]
+		delete schema.minItems;
+	}
 };
 
 makeSchemas();
