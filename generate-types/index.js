@@ -441,7 +441,7 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[], documentation: string }} ParsedInterfaceType */
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
 	/** @typedef {{ type: "namespace", symbolName: SymbolName, calls: ParsedSignature[], exports: PropertiesMap }} MergedNamespaceType */
-	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[] }} ParsedReferenceType */
+	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[], typeArgumentsWithoutDefaults: readonly ts.Type[] }} ParsedReferenceType */
 	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[] }} ParsedUnionType */
 	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[] }} ParsedIntersectionType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
@@ -636,6 +636,7 @@ const printError = (diagnostic) => {
 					}
 					modifierFlags = ts.getCombinedModifierFlags(decl);
 				}
+				if (!innerType) continue;
 				if (modifierFlags & ts.ModifierFlags.Private) {
 					continue;
 				}
@@ -653,6 +654,25 @@ const printError = (diagnostic) => {
 				});
 			}
 			return properties;
+		};
+
+		/**
+		 *
+		 * @param {readonly ts.Type[]} args
+		 * @param {readonly ts.Type[] | undefined} parameters
+		 * @returns {readonly ts.Type[]}
+		 */
+		const omitDefaults = (args, parameters) => {
+			if (!parameters) return args;
+			const argsWithoutDefaults = args.slice();
+			for (let i = args.length - 1; i > 0; i--) {
+				if (args[i] === parameters[i].getDefault()) {
+					argsWithoutDefaults.length--;
+				} else {
+					break;
+				}
+			}
+			return argsWithoutDefaults;
 		};
 
 		if (/** @type {any} */ (type).isTypeParameter()) {
@@ -720,10 +740,15 @@ const printError = (diagnostic) => {
 		if (type.aliasSymbol) {
 			const aliasType = checker.getDeclaredTypeOfSymbol(type.aliasSymbol);
 			if (aliasType && aliasType !== type) {
+				const typeArguments = type.aliasTypeArguments || [];
 				return {
 					type: "reference",
 					target: aliasType,
-					typeArguments: type.aliasTypeArguments || [],
+					typeArguments,
+					typeArgumentsWithoutDefaults: omitDefaults(
+						typeArguments,
+						aliasType.isClassOrInterface() && aliasType.typeParameters
+					),
 				};
 			}
 		}
@@ -745,6 +770,10 @@ const printError = (diagnostic) => {
 					type: "reference",
 					target: typeRef.target,
 					typeArguments,
+					typeArgumentsWithoutDefaults: omitDefaults(
+						typeArguments,
+						typeRef.target.typeParameters
+					),
 				};
 			}
 		}
@@ -902,7 +931,7 @@ const printError = (diagnostic) => {
 				break;
 			case "reference":
 				captureType(type, parsed.target);
-				for (const inner of parsed.typeArguments) {
+				for (const inner of parsed.typeArgumentsWithoutDefaults) {
 					typeUsedAsTypeArgument.add(inner);
 					captureType(type, inner);
 				}
@@ -912,8 +941,10 @@ const printError = (diagnostic) => {
 					typeUsedAsBaseType.add(prop);
 					captureType(type, prop);
 				}
-				for (const prop of parsed.properties.values())
+				for (const prop of parsed.properties.values()) {
+					if (!prop.type) console.log(prop);
 					captureType(type, prop.type);
+				}
 				for (const call of parsed.calls) {
 					for (const arg of call.args) {
 						typeUsedAsArgument.add(arg.type);
@@ -1215,9 +1246,9 @@ const printError = (diagnostic) => {
 				return [parsed.type, parsed.name];
 			}
 			case "reference": {
-				const { target, typeArguments } = parsed;
-				if (typeArguments.length === 0) return undefined;
-				return [parsed.type, target, ...typeArguments];
+				const { target, typeArgumentsWithoutDefaults } = parsed;
+				if (typeArgumentsWithoutDefaults.length === 0) return undefined;
+				return [parsed.type, target, ...typeArgumentsWithoutDefaults];
 			}
 			case "union":
 			case "intersection": {
@@ -1301,7 +1332,7 @@ const printError = (diagnostic) => {
 				if (!parsed) return item;
 				while (
 					parsed.type === "reference" &&
-					parsed.typeArguments.length === 0
+					parsed.typeArgumentsWithoutDefaults.length === 0
 				) {
 					parsed = parsedCollectedTypes.get(parsed.target);
 				}
@@ -1325,6 +1356,7 @@ const printError = (diagnostic) => {
 								type: "reference",
 								target: otherType,
 								typeArguments: [],
+								typeArgumentsWithoutDefaults: [],
 						  }
 				);
 				updates = true;
@@ -1616,7 +1648,7 @@ const printError = (diagnostic) => {
 					let methodInfo = parsedCollectedTypes.get(propType);
 					while (
 						methodInfo.type === "reference" &&
-						methodInfo.typeArguments.length === 0
+						methodInfo.typeArgumentsWithoutDefaults.length === 0
 					) {
 						methodInfo = parsedCollectedTypes.get(methodInfo.target);
 					}
@@ -1709,28 +1741,30 @@ const printError = (diagnostic) => {
 			case "reference": {
 				if (parsed.typeArguments.length === 0)
 					return getCode(parsed.target, typeArgs, state);
+				if (parsed.typeArgumentsWithoutDefaults.length === 0)
+					return getCode(parsed.target, typeArgs, "with type args");
 				const parsedTarget = parsedCollectedTypes.get(parsed.target);
 				if (parsedTarget && parsedTarget.type === "primitive") {
 					if (parsedTarget.name === "[]") {
-						return `[${parsed.typeArguments
+						return `[${parsed.typeArgumentsWithoutDefaults
 							.map((t) => getCode(t, typeArgs))
 							.join(", ")}]`;
 					} else if (parsedTarget.name === "[...]") {
-						const items = parsed.typeArguments.map((t) => getCode(t, typeArgs));
+						const items = parsed.typeArgumentsWithoutDefaults.map((t) => getCode(t, typeArgs));
 						const last = items.pop();
 						return `[${items.join(", ")}, ...(${last})[]]`;
 					} else if (
 						parsedTarget.name === "Array" &&
-						parsed.typeArguments.length === 1
+						parsed.typeArgumentsWithoutDefaults.length === 1
 					) {
-						return `(${getCode(parsed.typeArguments[0], typeArgs)})[]`;
+						return `(${getCode(parsed.typeArgumentsWithoutDefaults[0], typeArgs)})[]`;
 					}
 				}
 				return `${getCode(
 					parsed.target,
 					typeArgs,
 					"with type args"
-				)}<${parsed.typeArguments
+				)}<${parsed.typeArgumentsWithoutDefaults
 					.map((t) => getCode(t, typeArgs))
 					.join(", ")}>`;
 			}
