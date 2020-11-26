@@ -563,7 +563,9 @@ const printError = (diagnostic) => {
 				canBeOptional &&
 				((type.getFlags() & ts.TypeFlags.Any) !== 0 ||
 					(p.getFlags() & ts.SymbolFlags.Optional) !== 0 ||
-					(paramDeclaration && !!paramDeclaration.initializer) ||
+					(paramDeclaration &&
+						(!!paramDeclaration.initializer ||
+							!!paramDeclaration.questionToken)) ||
 					(jsdocParamDeclaration &&
 						jsdocParamDeclaration.typeExpression &&
 						jsdocParamDeclaration.typeExpression.type.kind ===
@@ -942,7 +944,6 @@ const printError = (diagnostic) => {
 					captureType(type, prop);
 				}
 				for (const prop of parsed.properties.values()) {
-					if (!prop.type) console.log(prop);
 					captureType(type, prop.type);
 				}
 				for (const call of parsed.calls) {
@@ -1750,14 +1751,19 @@ const printError = (diagnostic) => {
 							.map((t) => getCode(t, typeArgs))
 							.join(", ")}]`;
 					} else if (parsedTarget.name === "[...]") {
-						const items = parsed.typeArgumentsWithoutDefaults.map((t) => getCode(t, typeArgs));
+						const items = parsed.typeArgumentsWithoutDefaults.map((t) =>
+							getCode(t, typeArgs)
+						);
 						const last = items.pop();
 						return `[${items.join(", ")}, ...(${last})[]]`;
 					} else if (
 						parsedTarget.name === "Array" &&
 						parsed.typeArgumentsWithoutDefaults.length === 1
 					) {
-						return `(${getCode(parsed.typeArgumentsWithoutDefaults[0], typeArgs)})[]`;
+						return `(${getCode(
+							parsed.typeArgumentsWithoutDefaults[0],
+							typeArgs
+						)})[]`;
 					}
 				}
 				return `${getCode(
