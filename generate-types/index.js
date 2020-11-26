@@ -1518,11 +1518,7 @@ const printError = (diagnostic) => {
 			if (set === undefined) {
 				imports.set(from, (set = new Set()));
 			}
-			if (exportName === name) {
-				set.add(name);
-			} else {
-				set.add(`${exportName} as ${name}`);
-			}
+			set.add(exportName === name ? name : `${exportName} as ${name}`);
 		} else {
 			importDeclarations.add(
 				`type ${name} = import(${JSON.stringify(from)}).${exportName};`
@@ -1860,7 +1856,10 @@ const printError = (diagnostic) => {
 						if (code.startsWith("export ")) {
 							declarations.push(code);
 						} else if (/^typeof [A-Za-z_0-9]+$/.test(code)) {
-							exports.push(`${code.slice(`typeof `.length)} as ${name}`);
+							const exportName = code.slice(`typeof `.length);
+							exports.push(
+								exportName === name ? name : `${exportName} as ${name}`
+							);
 						} else {
 							declarations.push(
 								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
@@ -1872,7 +1871,7 @@ const printError = (diagnostic) => {
 							if (exposedNames.has(name)) continue;
 							const code = getCode(type, new Set());
 							if (/^[A-Za-z_0-9]+$/.test(code)) {
-								exports.push(`${code} as ${name}`);
+								exports.push(code === name ? name : `${code} as ${name}`);
 							} else {
 								declarations.push(`export type ${name} = ${code};\n`);
 							}
