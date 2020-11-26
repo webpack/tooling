@@ -442,8 +442,8 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
 	/** @typedef {{ type: "namespace", symbolName: SymbolName, calls: ParsedSignature[], exports: PropertiesMap }} MergedNamespaceType */
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[], typeArgumentsWithoutDefaults: readonly ts.Type[] }} ParsedReferenceType */
-	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[] }} ParsedUnionType */
-	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[] }} ParsedIntersectionType */
+	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedUnionType */
+	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedIntersectionType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
 	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
 	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedImportType | ParsedSymbolType} ParsedType */
@@ -684,11 +684,31 @@ const printError = (diagnostic) => {
 			};
 		}
 
+		if (type.aliasSymbol) {
+			const aliasType = checker.getDeclaredTypeOfSymbol(type.aliasSymbol);
+			if (aliasType && aliasType !== type) {
+				const typeArguments = type.aliasTypeArguments || [];
+				return {
+					type: "reference",
+					target: aliasType,
+					typeArguments,
+					typeArgumentsWithoutDefaults: omitDefaults(
+						typeArguments,
+						aliasType.isClassOrInterface() && aliasType.typeParameters
+					),
+				};
+			}
+		}
+
 		if (type.isUnion()) {
 			return {
 				type: "union",
 				symbolName: parseName(type),
 				types: type.types,
+				typeParameters:
+					type.aliasTypeArguments && type.aliasTypeArguments.length > 0
+						? type.aliasTypeArguments
+						: undefined,
 			};
 		}
 
@@ -697,6 +717,10 @@ const printError = (diagnostic) => {
 				type: "intersection",
 				symbolName: parseName(type),
 				types: type.types,
+				typeParameters:
+					type.aliasTypeArguments && type.aliasTypeArguments.length > 0
+						? type.aliasTypeArguments
+						: undefined,
 			};
 		}
 
@@ -737,22 +761,6 @@ const printError = (diagnostic) => {
 				baseTypes: [],
 				documentation: getDocumentation(type.getSymbol()),
 			};
-		}
-
-		if (type.aliasSymbol) {
-			const aliasType = checker.getDeclaredTypeOfSymbol(type.aliasSymbol);
-			if (aliasType && aliasType !== type) {
-				const typeArguments = type.aliasTypeArguments || [];
-				return {
-					type: "reference",
-					target: aliasType,
-					typeArguments,
-					typeArgumentsWithoutDefaults: omitDefaults(
-						typeArguments,
-						aliasType.isClassOrInterface() && aliasType.typeParameters
-					),
-				};
-			}
 		}
 
 		const symbol = type.aliasSymbol || type.getSymbol();
@@ -927,9 +935,13 @@ const printError = (diagnostic) => {
 					typeUsedInUnion.add(inner);
 					captureType(type, inner);
 				}
+				if (parsed.typeParameters)
+					for (const prop of parsed.typeParameters) captureType(type, prop);
 				break;
 			case "intersection":
 				for (const inner of parsed.types) captureType(type, inner);
+				if (parsed.typeParameters)
+					for (const prop of parsed.typeParameters) captureType(type, prop);
 				break;
 			case "reference":
 				captureType(type, parsed.target);
@@ -1253,8 +1265,19 @@ const printError = (diagnostic) => {
 			}
 			case "union":
 			case "intersection": {
-				const { symbolName, types } = parsed;
-				return [parsed.type, symbolName[0], ...types];
+				const { symbolName, types, typeParameters } = parsed;
+				const typeParametersMap = new Map(
+					typeParameters && typeParameters.map((t, i) => [t, i])
+				);
+				return [
+					parsed.type,
+					symbolName[0],
+					typeParameters ? typeParameters.length : 0,
+					...types,
+				].map((item) => {
+					const x = typeParametersMap.get(/** @type {ts.Type} */ (item));
+					return x === undefined ? item : x;
+				});
 			}
 			case "interface": {
 				const {
@@ -1389,7 +1412,10 @@ const printError = (diagnostic) => {
 			}
 			case "union":
 			case "intersection": {
-				if (parsed.symbolName[0] !== AnonymousType && exposedType !== type) {
+				if (
+					parsed.typeParameters ||
+					(parsed.symbolName[0] !== AnonymousType && exposedType !== type)
+				) {
 					needName.push([type, parsed]);
 				}
 				break;
@@ -1726,11 +1752,24 @@ const printError = (diagnostic) => {
 
 				const variable = typeToVariable.get(type);
 				if (variable) {
+					if (variable === "ContainerOptionsFormat") debugger;
 					queueDeclaration(
 						type,
 						variable,
-						() => `type ${variable} = ${code(new Set())};`
+						() =>
+							`type ${variable}${
+								parsed.typeParameters
+									? `<${parsed.typeParameters
+											.map((t) => getCode(t, new Set()))
+											.join(", ")}>`
+									: ""
+							} = ${code(new Set())};`
 					);
+					if (state !== "with type args" && parsed.typeParameters) {
+						return `${variable}<${parsed.typeParameters.map((t) =>
+							getCode(t, typeArgs)
+						)}>`;
+					}
 					return `${variable}`;
 				}
 				return code(typeArgs);
