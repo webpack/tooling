@@ -46,6 +46,7 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 		bannerComment:
 			"/*\n * This file was automatically generated.\n * DO NOT MODIFY BY HAND.\n * Run `yarn special-lint-fix` to update\n */",
 		unreachableDefinitions: true,
+		unknownAny: false,
 		style,
 	}).then(
 		(ts) => {
