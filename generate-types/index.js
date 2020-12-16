@@ -1600,7 +1600,7 @@ const printError = (diagnostic) => {
 							code: getCode(arg.type, innerTypeArgs),
 							optional: false,
 					  };
-				canBeOptional = canBeOptional || optional;
+				canBeOptional = canBeOptional && optional;
 				return `${arg.spread ? "..." : ""}${arg.name}${
 					optional ? "?" : ""
 				}: ${code}`;
