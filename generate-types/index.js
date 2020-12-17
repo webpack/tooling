@@ -999,10 +999,10 @@ const printError = (diagnostic) => {
 	/// Convert interfaces to classes ///
 	/**
 	 * @param {ts.Type} type the type
+	 * @param {ParsedType | MergedType} parsed the parsed variant
 	 * @returns {boolean} true, when it can be classified
 	 */
-	const canBeClassified = (type) => {
-		const parsed = parsedCollectedTypes.get(type);
+	const canBeClassified = (type, parsed = parsedCollectedTypes.get(type)) => {
 		if (parsed === undefined) return false;
 		if (parsed.type === "reference") return true;
 		if (parsed.type === "class") return true;
@@ -1014,8 +1014,19 @@ const printError = (diagnostic) => {
 		) {
 			return false;
 		}
+		if (parsed.baseTypes.length === 0) return true;
+		return parsed.baseTypes.length === 1 && canBeBaseClass(parsed.baseTypes[0]);
+	};
+
+	/**
+	 * @param {ts.Type} type the type
+	 * @returns {boolean} true, when it can be a base class
+	 */
+	const canBeBaseClass = (type) => {
+		const baseType = type;
+		const baseParsed = parsedCollectedTypes.get(baseType);
 		return (
-			parsed.baseTypes.length === 0 || canBeClassified(parsed.baseTypes[0])
+			baseParsed.type === "primitive" || canBeClassified(baseType, baseParsed)
 		);
 	};
 
@@ -1040,7 +1051,7 @@ const printError = (diagnostic) => {
 					instance.calls.length === 0 &&
 					instance.constructors.length === 0 &&
 					((instance.baseTypes.length === 1 &&
-						canBeClassified(instance.baseTypes[0])) ||
+						canBeBaseClass(instance.baseTypes[0])) ||
 						instance.baseTypes.length === 0)
 				) {
 					/** @type {Omit<MergedClassType, "type" | "correspondingType">} */
