@@ -536,6 +536,7 @@ const printError = (diagnostic) => {
 	 */
 	const parseSignature = (signature) => {
 		let canBeOptional = true;
+		let rest = ts.signatureHasRestParameter(signature);
 		/**
 		 * @param {ts.Symbol} p parameter
 		 * @returns {ParsedParameter} parsed
@@ -571,12 +572,8 @@ const printError = (diagnostic) => {
 						jsdocParamDeclaration.typeExpression.type.kind ===
 							ts.SyntaxKind.JSDocOptionalType));
 			canBeOptional = canBeOptional && optional;
-			const spread =
-				(paramDeclaration && !!paramDeclaration.dotDotDotToken) ||
-				(jsdocParamDeclaration &&
-					jsdocParamDeclaration.typeExpression &&
-					jsdocParamDeclaration.typeExpression.type.kind ===
-						ts.SyntaxKind.JSDocVariadicType);
+			const spread = rest;
+			rest = false;
 			const documentation = getDocumentation(p);
 			return {
 				name: p.name,
@@ -586,18 +583,27 @@ const printError = (diagnostic) => {
 				type,
 			};
 		};
+		const params = signature.getParameters().slice();
+		if (
+			rest &&
+			params.length > 0 &&
+			params[params.length - 1].name === "args"
+		) {
+			const p = params[params.length - 1];
+			const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
+			if (type.intrinsicName === "error") {
+				// This fixes a problem that typescript adds `...args: any[]` to a signature when `arguments` as text is used in body
+				params.pop();
+				rest = false;
+			}
+		}
 		return {
 			documentation: getDocumentation(signature),
 			typeParameters:
 				signature.typeParameters && signature.typeParameters.length > 0
 					? signature.typeParameters
 					: undefined,
-			args: signature
-				.getParameters()
-				.slice()
-				.reverse()
-				.map(parseParameter)
-				.reverse(),
+			args: params.reverse().map(parseParameter).reverse(),
 			returnType: signature.getReturnType(),
 			thisType: signature.thisParameter
 				? checker.getTypeOfSymbolAtLocation(
@@ -613,6 +619,7 @@ const printError = (diagnostic) => {
 	 * @returns {ParsedType | undefined} parsed type
 	 */
 	const parseType = (type) => {
+		if (checker.typeToString(type).includes(", ...args: any[])")) debugger;
 		/**
 		 * @param {ts.Symbol[]} symbols list of symbols
 		 * @param {ts.Type[]=} baseTypes base types from which properties should be omitted
@@ -724,6 +731,14 @@ const printError = (diagnostic) => {
 			};
 		}
 
+		if (type.intrinsicName) {
+			if (type.intrinsicName === "error") debugger;
+			return {
+				type: "primitive",
+				name: type.intrinsicName === "error" ? "any" : type.intrinsicName,
+			};
+		}
+
 		const flags = type.getFlags();
 
 		if (flags & ts.TypeFlags.Literal)
@@ -751,11 +766,18 @@ const printError = (diagnostic) => {
 				? /** @type {ts.ObjectType} */ (type).objectFlags
 				: 0;
 		if (objectFlags & ts.ObjectFlags.JSLiteral) {
+			const props = type.getProperties();
+			if (props.length === 0) {
+				return {
+					type: "primitive",
+					name: "object",
+				};
+			}
 			return {
 				type: "interface",
 				symbolName: [AnonymousType, "Literal"],
 				subtype: "literal",
-				properties: toPropMap(type.getProperties(), undefined, ["Literal"]),
+				properties: toPropMap(props, undefined, ["Literal"]),
 				constructors: [],
 				calls: [],
 				baseTypes: [],
@@ -1763,7 +1785,6 @@ const printError = (diagnostic) => {
 
 				const variable = typeToVariable.get(type);
 				if (variable) {
-					if (variable === "ContainerOptionsFormat") debugger;
 					queueDeclaration(
 						type,
 						variable,
