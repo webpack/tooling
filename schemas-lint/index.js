@@ -28,6 +28,7 @@ for (const filename of schemas) {
 			"title",
 			"cli",
 			"items",
+			"implements",
 			"properties",
 			"additionalProperties",
 			"type",
@@ -80,7 +81,9 @@ for (const filename of schemas) {
 			);
 			if (otherProperties.length > 0) {
 				console.log(
-					`The properties ${otherProperties.join(", ")} are not allowed to use`
+					`${path} should not have the ${
+						otherProperties.length > 1 ? "properties" : "property"
+					} ${otherProperties.join(", ")}`
 				);
 				process.exitCode = 1;
 				// When allowing more properties make sure to add nice error messages for them in WebpackOptionsValidationError
