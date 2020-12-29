@@ -88,6 +88,7 @@ const PROPERTIES = [
 	"minItems",
 	"uniqueItems",
 
+	"implements",
 	"additionalProperties",
 	"properties",
 	"required",
@@ -114,7 +115,7 @@ const NESTED_DIRECT = ["items", "additionalProperties"];
 
 const NESTED_ARRAY = ["oneOf", "anyOf", "allOf"];
 
-const processJson = (json) => {
+const processJson = (json, context) => {
 	json = sortObjectWithList(json, PROPERTIES);
 
 	if (json.definitions) {
@@ -127,23 +128,51 @@ const processJson = (json) => {
 		}
 	}
 
+	if (json.implements) {
+		const prefix = "#/definitions/";
+		for (const impl of [].concat(json.implements)) {
+			if (!impl.startsWith(prefix)) {
+				console.warn(
+					`"implements": "${impl}" -> should start with "${prefix}"`
+				);
+				continue;
+			}
+			const name = impl.slice(prefix.length);
+			const referencedSchema = context.definitions[name];
+			if (!referencedSchema) {
+				console.warn(`"implements": "${impl}" -> referenced schema not found`);
+				continue;
+			}
+			if (typeof referencedSchema.properties !== "object") {
+				console.warn(
+					`"implements": "${impl}" -> referenced schema has no properties`
+				);
+				continue;
+			}
+			json.properties = {
+				...json.properties,
+				...referencedSchema.properties,
+			};
+		}
+	}
+
 	for (const name of NESTED_WITH_NAME) {
 		if (name in json && json[name] && typeof json[name] === "object") {
 			json[name] = sortObjectAlphabetically(json[name]);
 			for (const key in json[name]) {
-				json[name][key] = processJson(json[name][key]);
+				json[name][key] = processJson(json[name][key], context);
 			}
 		}
 	}
 	for (const name of NESTED_DIRECT) {
 		if (name in json && json[name] && typeof json[name] === "object") {
-			json[name] = processJson(json[name]);
+			json[name] = processJson(json[name], context);
 		}
 	}
 	for (const name of NESTED_ARRAY) {
 		if (name in json && Array.isArray(json[name])) {
 			for (let i = 0; i < json[name].length; i++) {
-				json[name][i] = processJson(json[name][i]);
+				json[name][i] = processJson(json[name][i], context);
 			}
 			sortArrayByType(json[name]);
 		}
@@ -154,7 +183,10 @@ const processJson = (json) => {
 
 const formatSchema = (schemaPath) => {
 	const json = require(schemaPath);
-	const processedJson = processJson(json);
+	const processedJson = processJson(json, {
+		schema: json,
+		definitions: json.definitions,
+	});
 	const rawString = JSON.stringify(processedJson, null, 2);
 	const config = prettier.resolveConfig.sync(schemaPath);
 	const prettyString = prettier.format(rawString, config);

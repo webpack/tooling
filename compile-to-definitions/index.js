@@ -96,10 +96,10 @@ const resolvePath = (root, ref) => {
 	return current;
 };
 
-const preprocessSchema = (schema, root = schema) => {
+const preprocessSchema = (schema, root = schema, path = []) => {
 	if ("definitions" in schema) {
 		for (const key of Object.keys(schema.definitions)) {
-			preprocessSchema(schema.definitions[key], root);
+			preprocessSchema(schema.definitions[key], root, [key]);
 		}
 	}
 	if ("properties" in schema) {
@@ -121,23 +121,24 @@ const preprocessSchema = (schema, root = schema) => {
 					description: property.description || result.description,
 					anyOf: property.oneOf,
 				};
-				preprocessSchema(schema.properties[key], root);
+				preprocessSchema(schema.properties[key], root, [...path, key]);
 			} else {
-				preprocessSchema(property, root);
+				preprocessSchema(property, root, [...path, key]);
 			}
 		}
 	}
 	if ("items" in schema) {
-		preprocessSchema(schema.items, root);
+		preprocessSchema(schema.items, root, [...path, "item"]);
 	}
 	if (typeof schema.additionalProperties === "object") {
-		preprocessSchema(schema.additionalProperties, root);
+		preprocessSchema(schema.additionalProperties, root, [...path, "property"]);
 	}
 	const arrayProperties = ["oneOf", "anyOf", "allOf"];
 	for (const prop of arrayProperties) {
 		if (Array.isArray(schema[prop])) {
+			let i = 0;
 			for (const item of schema[prop]) {
-				preprocessSchema(item, root);
+				preprocessSchema(item, root, [...path, item.type || i++]);
 			}
 		}
 	}
@@ -145,6 +146,33 @@ const preprocessSchema = (schema, root = schema) => {
 		// Workaround for a typescript bug that
 		// string[] is not assignable to [string, ...string]
 		delete schema.minItems;
+	}
+	if ("implements" in schema) {
+		const implementedProps = new Set();
+		const implementedNames = [];
+		for (const impl of [].concat(schema.implements)) {
+			const referencedSchema = resolvePath(root, impl);
+			for (const prop of Object.keys(referencedSchema.properties)) {
+				implementedProps.add(prop);
+			}
+			implementedNames.push(/\/([^\/]+)$/.exec(impl)[1]);
+		}
+		const propEntries = Object.entries(schema.properties).filter(
+			([name]) => !implementedProps.has(name)
+		);
+		if (propEntries.length > 0) {
+			const key =
+				path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Extra";
+			implementedNames.push(key);
+			root.definitions[key] = {
+				...schema,
+				properties: propEntries.reduce((obj, [name, value]) => {
+					obj[name] = value;
+					return obj;
+				}, {}),
+			};
+		}
+		schema.tsType = implementedNames.join(" & ");
 	}
 };
 
