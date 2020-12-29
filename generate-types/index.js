@@ -650,7 +650,11 @@ const printError = (diagnostic) => {
 					continue;
 				}
 				const flags = prop.getFlags();
-				if (name.startsWith("__@")) name = `[Symbol.${name.slice(3)}]`;
+				if (name.startsWith("__@")) {
+					name = `[Symbol.${name.slice(3)}]`;
+				} else if (!/^[_a-zA-Z$][_a-zA-Z$0-9]*$/.test(name)) {
+					name = JSON.stringify(name);
+				}
 				properties.set(name, {
 					type: innerType,
 					method: (flags & ts.SymbolFlags.Method) !== 0,
