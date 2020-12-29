@@ -619,7 +619,6 @@ const printError = (diagnostic) => {
 	 * @returns {ParsedType | undefined} parsed type
 	 */
 	const parseType = (type) => {
-		if (checker.typeToString(type).includes(", ...args: any[])")) debugger;
 		/**
 		 * @param {ts.Symbol[]} symbols list of symbols
 		 * @param {ts.Type[]=} baseTypes base types from which properties should be omitted
@@ -1158,12 +1157,18 @@ const printError = (diagnostic) => {
 			}
 		}
 		if (parsed.type === "intersection") {
-			const subtypes = parsed.types.map((t) => parsedCollectedTypes.get(t));
 			const keys = new Set();
+			/** @type {ParsedInterfaceType[]} */
+			const subtypes = [];
 			if (
-				subtypes.every(
-					(parsed) =>
-						parsed.type === "interface" &&
+				parsed.types.every((type) => {
+					const parsed = parsedCollectedTypes.get(type);
+					if (parsed.type !== "interface") return false;
+					subtypes.push(parsed);
+					return (
+						(typeReferencedBy.get(type).size === 1 ||
+							parsed.symbolName[0] === AnonymousType ||
+							parsed.properties.size === 0) &&
 						!parsed.subtype &&
 						!parsed.typeParameters &&
 						!parsed.stringIndex &&
@@ -1174,9 +1179,10 @@ const printError = (diagnostic) => {
 							keys.add(key);
 							return true;
 						})
-				)
+					);
+				})
 			) {
-				const interfaceSubtypes = /** @type {ParsedInterfaceType[]} */ (subtypes);
+				const interfaceSubtypes = subtypes;
 				const symbol = /** @type {any} */ (type).symbol;
 				const declaration = symbol && getDeclaration(symbol);
 				/** @type {ParsedInterfaceType} */
