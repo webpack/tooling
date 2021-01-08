@@ -107,6 +107,11 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 			const property = schema.properties[key];
 			if ("$ref" in property) {
 				const result = resolvePath(root, property.$ref);
+				if (!result) {
+					throw new Error(
+						`Unable to resolve "$ref": "${property.$ref}" in ${path.join("/")}`
+					);
+				}
 				schema.properties[key] = {
 					description: result.description,
 					anyOf: [property],
@@ -171,8 +176,34 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 					return obj;
 				}, {}),
 			};
+			preprocessSchema(root.definitions[key], root, [key]);
 		}
 		schema.tsType = implementedNames.join(" & ");
+		return;
+	}
+	if (
+		"properties" in schema &&
+		typeof schema.additionalProperties === "object" &&
+		!schema.tsType
+	) {
+		const { properties, additionalProperties, ...remaining } = schema;
+		const key1 =
+			path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Unknown";
+		const key2 =
+			path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Known";
+		root.definitions[key1] = {
+			...remaining,
+			properties,
+			additionalProperties: false,
+		};
+		preprocessSchema(root.definitions[key1], root, [key1]);
+		root.definitions[key2] = {
+			...remaining,
+			additionalProperties,
+		};
+		preprocessSchema(root.definitions[key2], root, [key2]);
+		schema.tsType = `${key1} & ${key2}`;
+		return;
 	}
 };
 
