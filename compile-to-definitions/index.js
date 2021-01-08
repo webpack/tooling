@@ -188,9 +188,9 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 	) {
 		const { properties, additionalProperties, ...remaining } = schema;
 		const key1 =
-			path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Unknown";
-		const key2 =
 			path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Known";
+		const key2 =
+			path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Unknown";
 		root.definitions[key1] = {
 			...remaining,
 			properties,
