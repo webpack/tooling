@@ -449,10 +449,10 @@ type@^2.0.0:
   resolved "https://registry.yarnpkg.com/type/-/type-2.1.0.tgz#9bdc22c648cf8cf86dd23d32336a41cfb6475e3f"
   integrity sha512-G9absDWvhAWCV2gmF1zKud3OyC61nZDwWvBL2DApaVFogI07CprggiQAOOjvp2NRjYWFzPyu7vwtDrQFq8jeSA==
 
-typescript@^4.1.2:
-  version "4.1.2"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-4.1.2.tgz#6369ef22516fe5e10304aae5a5c4862db55380e9"
-  integrity sha512-thGloWsGH3SOxv1SoY7QojKi0tc+8FnOmiarEGMbd/lar7QOEd3hvlx3Fp5y6FlDUGl9L+pd4n2e+oToGMmhRQ==
+typescript@^4.2.0-beta:
+  version "4.2.0-beta"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-4.2.0-beta.tgz#75326e43625718f4a325f5725a105a1b3f1a7b45"
+  integrity sha512-0nYjpkQ6bKjHoJTQkUHcDtGLNenqc5rfTcl3ISUnJXPkGa0115FcVJABmodfMKHLyDBmzDr8IGLbDv5m7sbYgw==
 
 wrap-ansi@^7.0.0:
   version "7.0.0"

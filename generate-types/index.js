@@ -1,6 +1,12 @@
 const argv = require("../lib/argv");
 
-const { write: doWrite, verbose, root, types: outputFile } = argv;
+const {
+	write: doWrite,
+	verbose,
+	root,
+	types: outputFile,
+	templateLiterals,
+} = argv;
 
 const path = require("path");
 const fs = require("fs").promises;
@@ -444,9 +450,10 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[], typeArgumentsWithoutDefaults: readonly ts.Type[] }} ParsedReferenceType */
 	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedUnionType */
 	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedIntersectionType */
+	/** @typedef {{ type: "template", texts: readonly string[], types: readonly ts.Type[] }} ParsedTemplateType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
 	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
-	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedImportType | ParsedSymbolType} ParsedType */
+	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
 	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
 	const isExcluded = (name) => {
@@ -746,6 +753,15 @@ const printError = (diagnostic) => {
 
 		if (flags & ts.TypeFlags.Literal)
 			return { type: "primitive", name: checker.typeToString(type) };
+		if (flags & ts.TypeFlags.TemplateLiteral) {
+			if (!templateLiterals) return { type: "primitive", name: "string" };
+			const templateType = /** @type {ts.TemplateLiteralType} */ (type);
+			return {
+				type: "template",
+				texts: templateType.texts,
+				types: templateType.types,
+			};
+		}
 		if (flags & ts.TypeFlags.Any) return { type: "primitive", name: "any" };
 		if (flags & ts.TypeFlags.Unknown)
 			return { type: "primitive", name: "unknown" };
@@ -955,6 +971,9 @@ const printError = (diagnostic) => {
 		}
 		parsedCollectedTypes.set(type, parsed);
 		switch (parsed.type) {
+			case "template":
+				for (const inner of parsed.types) captureType(type, inner);
+				break;
 			case "union":
 				for (const inner of parsed.types) {
 					typeUsedInUnion.add(inner);
@@ -1300,6 +1319,9 @@ const printError = (diagnostic) => {
 		switch (parsed.type) {
 			case "primitive": {
 				return [parsed.type, parsed.name];
+			}
+			case "template": {
+				return [parsed.type, ...parsed.texts, ...parsed.types];
 			}
 			case "reference": {
 				const { target, typeArgumentsWithoutDefaults } = parsed;
@@ -1781,6 +1803,16 @@ const printError = (diagnostic) => {
 		switch (parsed.type) {
 			case "primitive":
 				return parsed.name;
+			case "template": {
+				let code = "`";
+				code += parsed.texts[0];
+				for (let i = 0; i < parsed.types.length; i++) {
+					code += `\${${getCode(parsed.types[i], typeArgs)}}`;
+					code += parsed.texts[i + 1];
+				}
+				code += "`";
+				return code;
+			}
 			case "union":
 			case "intersection": {
 				/**
@@ -1788,8 +1820,7 @@ const printError = (diagnostic) => {
 				 * @returns {string} code
 				 */
 				const code = (typeArgs) =>
-					`(${parsed.types
-						.map((t) => getCode(t, typeArgs))
+					`(${Array.from(new Set(parsed.types.map((t) => getCode(t, typeArgs))))
 						.join(parsed.type === "intersection" ? " & " : " | ")
 						.replace(/(^|\| )false \| true($| \|)/g, "$1boolean$2")})`;
 
