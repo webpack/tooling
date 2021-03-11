@@ -169,8 +169,9 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 			const key =
 				path.map((x) => x[0].toUpperCase() + x.slice(1)).join("") + "Extra";
 			implementedNames.push(key);
+			const { implements, ...remainingSchema } = schema;
 			root.definitions[key] = {
-				...schema,
+				...remainingSchema,
 				properties: propEntries.reduce((obj, [name, value]) => {
 					obj[name] = value;
 					return obj;
