@@ -443,6 +443,7 @@ const printError = (diagnostic) => {
 	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, documentation: string }>} PropertiesMap */
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
+	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type }} ParsedTypeParameterType */
 	/** @typedef {{ type: "tuple", typeArguments: readonly ts.Type[] }} ParsedTupleType */
 	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[], documentation: string }} ParsedInterfaceType */
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
@@ -453,7 +454,7 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "template", texts: readonly string[], types: readonly ts.Type[] }} ParsedTemplateType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
 	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
-	/** @typedef {ParsedPrimitiveType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
+	/** @typedef {ParsedPrimitiveType | ParsedTypeParameterType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
 	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
 	const isExcluded = (name) => {
@@ -685,7 +686,7 @@ const printError = (diagnostic) => {
 			if (!parameters) return args;
 			const argsWithoutDefaults = args.slice();
 			for (let i = args.length - 1; i > 0; i--) {
-				if (args[i] === parameters[i].getDefault()) {
+				if (!parameters[i] || args[i] === parameters[i].getDefault()) {
 					argsWithoutDefaults.length--;
 				} else {
 					break;
@@ -696,8 +697,9 @@ const printError = (diagnostic) => {
 
 		if (/** @type {any} */ (type).isTypeParameter()) {
 			return {
-				type: "primitive",
+				type: "typeParameter",
 				name: type.symbol.name,
+				constraint: type.getConstraint(),
 			};
 		}
 
@@ -971,6 +973,9 @@ const printError = (diagnostic) => {
 		}
 		parsedCollectedTypes.set(type, parsed);
 		switch (parsed.type) {
+			case "typeParameter":
+				if (parsed.constraint) captureType(type, parsed.constraint);
+				break;
 			case "template":
 				for (const inner of parsed.types) captureType(type, inner);
 				break;
@@ -1320,6 +1325,9 @@ const printError = (diagnostic) => {
 			case "primitive": {
 				return [parsed.type, parsed.name];
 			}
+			case "typeParameter": {
+				return [parsed.type, parsed.name, parsed.constraint];
+			}
 			case "template": {
 				return [parsed.type, ...parsed.texts, ...parsed.types];
 			}
@@ -1643,7 +1651,9 @@ const printError = (diagnostic) => {
 	 */
 	const sigToString = (sig, typeArgs, type = undefined) => {
 		const sigTypeArgs = sig.typeParameters
-			? `<${sig.typeParameters.map((t) => getCode(t, typeArgs)).join(", ")}>`
+			? `<${sig.typeParameters
+					.map((t) => getCode(t, typeArgs, "in type args"))
+					.join(", ")}>`
 			: "";
 		const innerTypeArgs = new Set(typeArgs);
 		if (sig.typeParameters) {
@@ -1803,6 +1813,14 @@ const printError = (diagnostic) => {
 		switch (parsed.type) {
 			case "primitive":
 				return parsed.name;
+			case "typeParameter": {
+				let code = parsed.name;
+				if (state === "in type args" && parsed.constraint) {
+					const constraint = getCode(parsed.constraint, typeArgs, state);
+					code += ` extends ${constraint}`;
+				}
+				return code;
+			}
 			case "template": {
 				let code = "`";
 				code += parsed.texts[0];
@@ -1833,7 +1851,7 @@ const printError = (diagnostic) => {
 							`type ${variable}${
 								parsed.typeParameters
 									? `<${parsed.typeParameters
-											.map((t) => getCode(t, new Set()))
+											.map((t) => getCode(t, new Set(), "in type args"))
 											.join(", ")}>`
 									: ""
 							} = ${code(new Set())};`
@@ -1890,7 +1908,7 @@ const printError = (diagnostic) => {
 						return `${parsed.documentation}declare interface ${variable}${
 							parsed.typeParameters
 								? `<${parsed.typeParameters
-										.map((t) => getCode(t, new Set()))
+										.map((t) => getCode(t, new Set(), "in type args"))
 										.join(", ")}>`
 								: ""
 						}${
@@ -1930,7 +1948,7 @@ const printError = (diagnostic) => {
 					} ${variable}${
 						parsed.typeParameters
 							? `<${parsed.typeParameters
-									.map((t) => getCode(t, new Set()))
+									.map((t) => getCode(t, new Set(), "in type args"))
 									.join(", ")}>`
 							: ""
 					}${
