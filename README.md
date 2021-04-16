@@ -101,6 +101,22 @@ Glob to the schemas that should be processed.
 
 Output folder of the generated declaration files.
 
+## precompile-schemas
+
+```sh
+node node_modules/tooling/precompile-schemas
+```
+
+Generate `.check.js` files next to the JSON schemas.
+They export a single function which returned a boolean whether the object is validate according to the schema.
+This function doesn't do error handling, so run a real schema validation when it returns false.
+
+```text
+--schemas ./schemas/**/*.json
+```
+
+Glob to the schemas that should be processed.
+
 ## inherit-types
 
 ```sh

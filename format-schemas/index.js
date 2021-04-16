@@ -5,6 +5,7 @@ const { write: doWrite, root, schemas: schemasGlob } = argv;
 const fs = require("fs");
 const glob = require("glob");
 const prettier = require("prettier");
+const processSchema = require("../lib/process-schema");
 
 const schemas = glob.sync(schemasGlob, { cwd: root, absolute: true });
 const minSlashes = schemas
@@ -109,77 +110,59 @@ const PROPERTIES = [
 	"tsType",
 ];
 
-const NESTED_WITH_NAME = ["definitions", "properties"];
+const processJson = processSchema.bind(null, {
+	schema: (json, context) => {
+		json = sortObjectWithList(json, PROPERTIES);
 
-const NESTED_DIRECT = ["items", "additionalProperties"];
-
-const NESTED_ARRAY = ["oneOf", "anyOf", "allOf"];
-
-const processJson = (json, context) => {
-	json = sortObjectWithList(json, PROPERTIES);
-
-	if (json.definitions) {
-		json.definitions = { ...json.definitions };
-		for (const key of Object.keys(json.definitions)) {
-			const baseDef = baseDefinitions.get(key);
-			if (baseDef) {
-				json.definitions[key] = baseDef;
+		if (json.definitions) {
+			json.definitions = { ...json.definitions };
+			for (const key of Object.keys(json.definitions)) {
+				const baseDef = baseDefinitions.get(key);
+				if (baseDef) {
+					json.definitions[key] = baseDef;
+				}
 			}
 		}
-	}
 
-	if (json.implements) {
-		const prefix = "#/definitions/";
-		for (const impl of [].concat(json.implements)) {
-			if (!impl.startsWith(prefix)) {
-				console.warn(
-					`"implements": "${impl}" -> should start with "${prefix}"`
-				);
-				continue;
+		if (json.implements) {
+			const prefix = "#/definitions/";
+			for (const impl of [].concat(json.implements)) {
+				if (!impl.startsWith(prefix)) {
+					console.warn(
+						`"implements": "${impl}" -> should start with "${prefix}"`
+					);
+					continue;
+				}
+				const name = impl.slice(prefix.length);
+				const referencedSchema = context.definitions[name];
+				if (!referencedSchema) {
+					console.warn(
+						`"implements": "${impl}" -> referenced schema not found`
+					);
+					continue;
+				}
+				if (typeof referencedSchema.properties !== "object") {
+					console.warn(
+						`"implements": "${impl}" -> referenced schema has no properties`
+					);
+					continue;
+				}
+				json.properties = {
+					...json.properties,
+					...referencedSchema.properties,
+				};
 			}
-			const name = impl.slice(prefix.length);
-			const referencedSchema = context.definitions[name];
-			if (!referencedSchema) {
-				console.warn(`"implements": "${impl}" -> referenced schema not found`);
-				continue;
-			}
-			if (typeof referencedSchema.properties !== "object") {
-				console.warn(
-					`"implements": "${impl}" -> referenced schema has no properties`
-				);
-				continue;
-			}
-			json.properties = {
-				...json.properties,
-				...referencedSchema.properties,
-			};
 		}
-	}
 
-	for (const name of NESTED_WITH_NAME) {
-		if (name in json && json[name] && typeof json[name] === "object") {
-			json[name] = sortObjectAlphabetically(json[name]);
-			for (const key in json[name]) {
-				json[name][key] = processJson(json[name][key], context);
-			}
-		}
-	}
-	for (const name of NESTED_DIRECT) {
-		if (name in json && json[name] && typeof json[name] === "object") {
-			json[name] = processJson(json[name], context);
-		}
-	}
-	for (const name of NESTED_ARRAY) {
-		if (name in json && Array.isArray(json[name])) {
-			for (let i = 0; i < json[name].length; i++) {
-				json[name][i] = processJson(json[name][i], context);
-			}
-			sortArrayByType(json[name]);
-		}
-	}
-
-	return json;
-};
+		return json;
+	},
+	array: (json, context) => {
+		return sortArrayByType(json);
+	},
+	object: (json, context) => {
+		return sortObjectAlphabetically(json);
+	},
+});
 
 const formatSchema = (schemaPath) => {
 	const json = require(schemaPath);

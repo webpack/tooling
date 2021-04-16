@@ -32,6 +32,7 @@ const makeSchemas = () => {
 };
 
 const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
+	if (path.basename(absSchemaPath).startsWith("_")) return;
 	const relPath = path.relative(schemasDir, absSchemaPath);
 	const directory = path.dirname(relPath);
 	const basename = path.basename(relPath, path.extname(relPath));
@@ -41,6 +42,8 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 		`${path.join(directory, basename)}.d.ts`
 	);
 	const schema = JSON.parse(fs.readFileSync(absSchemaPath, "utf-8"));
+	const keys = Object.keys(schema);
+	if (keys.length === 1 && keys[0] === "$ref") return;
 	preprocessSchema(schema);
 	compile(schema, basename, {
 		bannerComment:
