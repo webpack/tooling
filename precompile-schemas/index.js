@@ -118,9 +118,7 @@ const postprocess = async (code) => {
 			compress: {
 				passes: 3,
 			},
-			mangle: {
-				properties: true,
-			},
+			mangle: true,
 			ecma: 2015,
 			toplevel: true,
 		})
