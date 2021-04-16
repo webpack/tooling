@@ -1,10 +1,11 @@
 const argv = require("../lib/argv");
 
-const { write: doWrite, root, schemas: schemasGlob } = argv;
+const { write: doWrite, root, declarations, schemas: schemasGlob } = argv;
 
 const fs = require("fs");
 const path = require("path");
 const glob = require("glob");
+const findCommonDir = require("commondir");
 const { pathToFileURL, fileURLToPath } = require("url");
 const processSchema = require("../lib/process-schema");
 const terser = require("terser");
@@ -123,34 +124,81 @@ const postprocess = async (code) => {
 			toplevel: true,
 		})
 	).code;
+
+	// banner
+	code = `/*
+ * This file was automatically generated.
+ * DO NOT MODIFY BY HAND.
+ * Run \`yarn special-lint-fix\` to update
+ */
+${code}`;
 	return code;
 };
 
-const precompileSchema = async (schemaPath) => {
+const createDeclaration = (schemaPath, title, schemasDir) => {
+	const relPath = path.relative(schemasDir, schemaPath);
+	const directory = path.dirname(relPath);
+	const basename = path.basename(relPath, path.extname(relPath));
+	const filename = path.resolve(
+		root,
+		declarations,
+		`${path.join(directory, basename)}`
+	);
+	const fromSchemaToDeclaration = path
+		.relative(path.dirname(schemaPath), filename)
+		.replace(/\\/g, "/");
+	return `/*
+ * This file was automatically generated.
+ * DO NOT MODIFY BY HAND.
+ * Run \`yarn special-lint-fix\` to update
+ */
+declare const check: (options: ${
+		title
+			? `import(${JSON.stringify(fromSchemaToDeclaration)}).${title}`
+			: "any"
+	}) => boolean;
+export = check;
+`;
+};
+
+const updateFile = (path, expected) => {
+	let normalizedContent = "";
+	try {
+		const content = fs.readFileSync(path, "utf-8");
+		normalizedContent = content.replace(/\r\n?/g, "\n");
+	} catch (e) {
+		// ignore
+	}
+	if (normalizedContent.trim() !== expected.trim()) {
+		if (doWrite) {
+			fs.writeFileSync(path, expected, "utf-8");
+			console.error(`${path} updated`);
+		} else {
+			console.error(`${path} need to be updated`);
+			process.exitCode = 1;
+		}
+	}
+};
+
+const precompileSchema = async (schemaPath, schemasDir) => {
 	if (path.basename(schemaPath).startsWith("_")) return;
 	try {
 		const schema = require(schemaPath);
+		const title = schema.title;
 		const processedSchema = processJson(schema);
 		processedSchema.$id = pathToFileURL(schemaPath).href;
 		const validate = await ajv.compileAsync(processedSchema);
 		const code = await postprocess(standaloneCode(ajv, validate));
 		const precompiledSchemaPath = schemaPath.replace(/\.json$/, ".check.js");
-		let normalizedContent = "";
-		try {
-			const content = fs.readFileSync(precompiledSchemaPath, "utf-8");
-			normalizedContent = content.replace(/\r\n?/g, "\n");
-		} catch (e) {
-			// ignore
-		}
-		if (normalizedContent.trim() !== code.trim()) {
-			if (doWrite) {
-				fs.writeFileSync(precompiledSchemaPath, code, "utf-8");
-				console.error(`${precompiledSchemaPath} updated`);
-			} else {
-				console.error(`${precompiledSchemaPath} need to be updated`);
-				process.exitCode = 1;
-			}
-		}
+		const precompiledSchemaDeclarationPath = schemaPath.replace(
+			/\.json$/,
+			".check.d.ts"
+		);
+		updateFile(precompiledSchemaPath, code);
+		updateFile(
+			precompiledSchemaDeclarationPath,
+			createDeclaration(schemaPath, title, schemasDir)
+		);
 	} catch (e) {
 		e.message += "\nduring precompilation of " + schemaPath;
 		throw e;
@@ -158,8 +206,9 @@ const precompileSchema = async (schemaPath) => {
 };
 
 (async () => {
+	const commonDir = path.resolve(findCommonDir(schemas));
 	for (let absPath of schemas) {
-		precompileSchema(absPath);
+		precompileSchema(absPath, commonDir);
 	}
 })().catch((e) => {
 	console.error(e.stack);

@@ -111,11 +111,19 @@ Generate `.check.js` files next to the JSON schemas.
 They export a single function which returned a boolean whether the object is validate according to the schema.
 This function doesn't do error handling, so run a real schema validation when it returns false.
 
+It will also generate a `.check.d.ts` file with type declarations.
+
 ```text
 --schemas ./schemas/**/*.json
 ```
 
 Glob to the schemas that should be processed.
+
+```text
+---declarations declarations
+```
+
+Folder of the generated declaration files.
 
 ## inherit-types
 
