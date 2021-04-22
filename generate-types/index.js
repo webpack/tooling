@@ -1996,6 +1996,11 @@ const printError = (diagnostic) => {
 							exports.push(
 								exportName === name ? name : `${exportName} as ${name}`
 							);
+						} else if (name === "default") {
+							declarations.push(
+								`${readonly ? "const" : "let"} _default: ${code};\n`
+							);
+							exports.push(`_default as default`);
 						} else {
 							declarations.push(
 								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
