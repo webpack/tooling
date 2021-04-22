@@ -188,6 +188,8 @@ node node_modules/tooling/generate-types
 Generate typescript types declarations file (`types.d.ts`) from the visible types in the exposed `main` (package.json) entry file.
 This declaration file should be used as `types` in `package.json`.
 
+When a `declarations/index.d.ts` file exists, types from this are also exposed.
+
 `tsconfig.types.json` must be present in root directory and typescript must be installed.
 
 ```text
