@@ -244,6 +244,16 @@ const printError = (diagnostic) => {
 
 	const exposedFiles = ["lib/index.js"];
 
+	try {
+		if (
+			(
+				await fs.stat(path.resolve(rootPath, "declarations/index.d.ts"))
+			).isFile()
+		) {
+			exposedFiles.push("declarations/index.d.ts");
+		}
+	} catch {}
+
 	/** @type {Set<ts.Type>} */
 	const collectedTypes = new Set();
 	/** @type {Map<ts.Type, { source: ts.SourceFile, symbol?: ts.Symbol, name?: string }>} */
@@ -428,8 +438,10 @@ const printError = (diagnostic) => {
 		}
 
 		const type = getTypeOfSourceFile(exposedSource);
-		captureType(undefined, type, exposedSource);
-		exposedType = type;
+		if (type) {
+			captureType(undefined, type, exposedSource);
+			if (!exposedType) exposedType = type;
+		}
 
 		for (const [name, type] of getTypeExportsOfSourceFile(exposedSource)) {
 			captureType(undefined, type, exposedSource);
