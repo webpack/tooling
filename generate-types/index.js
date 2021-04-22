@@ -443,7 +443,7 @@ const printError = (diagnostic) => {
 	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, documentation: string }>} PropertiesMap */
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
-	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type }} ParsedTypeParameterType */
+	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type, defaultValue: ts.Type }} ParsedTypeParameterType */
 	/** @typedef {{ type: "tuple", typeArguments: readonly ts.Type[] }} ParsedTupleType */
 	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[], documentation: string }} ParsedInterfaceType */
 	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
@@ -706,6 +706,7 @@ const printError = (diagnostic) => {
 				type: "typeParameter",
 				name: type.symbol.name,
 				constraint: type.getConstraint(),
+				defaultValue: type.getDefault(),
 			};
 		}
 
@@ -981,6 +982,7 @@ const printError = (diagnostic) => {
 		switch (parsed.type) {
 			case "typeParameter":
 				if (parsed.constraint) captureType(type, parsed.constraint);
+				if (parsed.defaultValue) captureType(type, parsed.defaultValue);
 				break;
 			case "template":
 				for (const inner of parsed.types) captureType(type, inner);
@@ -1332,7 +1334,12 @@ const printError = (diagnostic) => {
 				return [parsed.type, parsed.name];
 			}
 			case "typeParameter": {
-				return [parsed.type, parsed.name, parsed.constraint];
+				return [
+					parsed.type,
+					parsed.name,
+					parsed.constraint,
+					parsed.defaultValue,
+				];
 			}
 			case "template": {
 				return [parsed.type, ...parsed.texts, ...parsed.types];
@@ -1821,9 +1828,15 @@ const printError = (diagnostic) => {
 				return parsed.name;
 			case "typeParameter": {
 				let code = parsed.name;
-				if (state === "in type args" && parsed.constraint) {
-					const constraint = getCode(parsed.constraint, typeArgs, state);
-					code += ` extends ${constraint}`;
+				if (state === "in type args") {
+					if (parsed.constraint) {
+						const constraint = getCode(parsed.constraint, typeArgs, state);
+						code += ` extends ${constraint}`;
+					}
+					if (parsed.defaultValue) {
+						const defaultValue = getCode(parsed.defaultValue, typeArgs, state);
+						code += ` = ${defaultValue}`;
+					}
 				}
 				return code;
 			}
