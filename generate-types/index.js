@@ -203,7 +203,7 @@ const printError = (diagnostic) => {
 	const rootPath = path.resolve(root);
 
 	const ownConfigPath = path.resolve(rootPath, "generate-types-config.js");
-	const options = { nameMapping: {}, exclude: [] };
+	const options = { nameMapping: {}, exclude: [], include: [] };
 	try {
 		Object.assign(options, require(ownConfigPath));
 	} catch (e) {
@@ -460,6 +460,9 @@ const printError = (diagnostic) => {
 	const isExcluded = (name) => {
 		return options.exclude.some((e) => e.test(name));
 	};
+	const isIncluded = (name) => {
+		return options.include.some((e) => e.test(name));
+	};
 
 	/**
 	 * @param {ts.Type=} type the type
@@ -639,8 +642,11 @@ const printError = (diagnostic) => {
 			for (const prop of symbols) {
 				let name = prop.name;
 				if (name === "prototype") continue;
-				if (isExcluded(`${name} in ${symbolName.join(" ")}`)) continue;
-				if (name.startsWith("_") && !name.startsWith("__")) continue;
+				const nameForFilter = `${name} in ${symbolName.join(" ")}`;
+				if (isExcluded(nameForFilter)) continue;
+				if (!isIncluded(nameForFilter)) {
+					if (name.startsWith("_") && !name.startsWith("__")) continue;
+				}
 				if (name.startsWith("__@") && !/^__@[^@]+$/.test(name)) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
