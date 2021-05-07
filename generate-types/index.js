@@ -312,18 +312,18 @@ const printError = (diagnostic) => {
 	const getTypeExportsOfSourceFile = (source) => {
 		/** @type {Map<string, ts.Type>} */
 		const map = new Map();
-		const sourceAsAny = /** @type {any} */ (source);
-		if (
-			sourceAsAny.externalModuleIndicator ||
-			sourceAsAny.commonJsModuleIndicator
-		) {
+		if (isSourceFileModule(source)) {
+			const sourceAsAny = /** @type {any} */ (source);
 			const moduleSymbol = /** @type {ts.Symbol} */ (sourceAsAny.symbol);
 			if (!moduleSymbol.exports) throw new Error("Not a module namespace");
 			moduleSymbol.exports.forEach((symbol, name) => {
 				if (name === ts.InternalSymbolName.ExportEquals) return;
+				const exportName = ts.unescapeLeadingUnderscores(name);
+				if (exportName.startsWith("_")) return;
 				const type = checker.getDeclaredTypeOfSymbol(symbol);
 				if (type.getFlags() & ts.TypeFlags.Any) return;
-				map.set(ts.unescapeLeadingUnderscores(name), type);
+				type.aliasSymbol = symbol;
+				map.set(exportName, type);
 			});
 			return map;
 		}
@@ -339,6 +339,51 @@ const printError = (diagnostic) => {
 		return (
 			sourceAsAny.externalModuleIndicator || sourceAsAny.commonJsModuleIndicator
 		);
+	};
+
+	const getTypeOfSymbol = (symbol, isValue) => {
+		let decl;
+		const type = (() => {
+			let type;
+			if (!isValue) {
+				type = checker.getDeclaredTypeOfSymbol(symbol);
+				if (type && type.intrinsicName !== "error") {
+					return type;
+				}
+			}
+			const decls = symbol.getDeclarations();
+			decl = decls && decls[0];
+			type = checker.getTypeOfSymbolAtLocation(symbol, decl || {});
+			if (type && type.intrinsicName !== "error") {
+				return type;
+			}
+			type = checker.getTypeAtLocation(decl);
+			if (type && type.intrinsicName !== "error") {
+				return type;
+			}
+		})();
+		if (type && decl) {
+			// Learn about type nodes
+			if (
+				((ts.isTypeAliasDeclaration(decl) && !decl.typeParameters) ||
+					(ts.isParameter(decl) && !decl.questionToken)) &&
+				decl.type
+			) {
+				/** @type {any} */ (type)._typeNode = decl.type;
+			}
+			if (ts.isParameter(decl)) {
+				for (const tag of ts.getJSDocTags(decl)) {
+					if (
+						ts.isJSDocParameterTag(tag) &&
+						tag.typeExpression &&
+						ts.isJSDocTypeExpression(tag.typeExpression)
+					) {
+						/** @type {any} */ (type)._typeNode = tag.typeExpression.type;
+					}
+				}
+			}
+		}
+		return type;
 	};
 
 	const getDeclaration = (symbol) => {
@@ -367,6 +412,7 @@ const printError = (diagnostic) => {
 				}
 			}
 		}
+
 		return decl;
 	};
 
@@ -411,7 +457,7 @@ const printError = (diagnostic) => {
 		// Expand references
 		for (const [symbol, name] of map) {
 			const decl = getDeclaration(symbol);
-			if (decl.expression) {
+			if (decl && decl.expression) {
 				const type = checker.getTypeAtLocation(decl.expression);
 				if (type && type.symbol && !map.has(type.symbol))
 					map.set(type.symbol, name);
@@ -439,8 +485,10 @@ const printError = (diagnostic) => {
 
 		const type = getTypeOfSourceFile(exposedSource);
 		if (type) {
-			captureType(undefined, type, exposedSource);
-			if (!exposedType) exposedType = type;
+			if (!exposedType) {
+				captureType(undefined, type, exposedSource);
+				exposedType = type;
+			}
 		}
 
 		for (const [name, type] of getTypeExportsOfSourceFile(exposedSource)) {
@@ -463,10 +511,11 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[], typeArgumentsWithoutDefaults: readonly ts.Type[] }} ParsedReferenceType */
 	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedUnionType */
 	/** @typedef {{ type: "intersection", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedIntersectionType */
+	/** @typedef {{ type: "index", symbolName: SymbolName, objectType: ts.Type, indexType: ts.Type }} ParsedIndexType */
 	/** @typedef {{ type: "template", texts: readonly string[], types: readonly ts.Type[] }} ParsedTemplateType */
-	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string }} ParsedImportType */
+	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string, isValue: boolean }} ParsedImportType */
 	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
-	/** @typedef {ParsedPrimitiveType | ParsedTypeParameterType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
+	/** @typedef {ParsedPrimitiveType | ParsedTypeParameterType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedIndexType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
 	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
 	const isExcluded = (name) => {
@@ -565,16 +614,12 @@ const printError = (diagnostic) => {
 		 * @returns {ParsedParameter} parsed
 		 */
 		const parseParameter = (p) => {
-			const paramDeclaration =
-				p.valueDeclaration && ts.isParameter(p.valueDeclaration)
-					? p.valueDeclaration
-					: undefined;
-			let jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration &&
-			p.valueDeclaration.kind === ts.SyntaxKind.JSDocParameterTag
-				? /** @type {ts.JSDocParameterTag} */ (p.valueDeclaration)
-				: undefined);
-			if (!jsdocParamDeclaration && p.valueDeclaration) {
-				const jsdoc = ts.getJSDocTags(p.valueDeclaration);
+			const decl = getDeclaration(p);
+			const paramDeclaration = decl && ts.isParameter(decl) ? decl : undefined;
+			let jsdocParamDeclaration =
+				decl && ts.isJSDocParameterTag(decl) ? decl : undefined;
+			if (!jsdocParamDeclaration && decl) {
+				const jsdoc = ts.getJSDocTags(decl);
 				if (
 					jsdoc.length > 0 &&
 					jsdoc[0].kind === ts.SyntaxKind.JSDocParameterTag
@@ -582,7 +627,7 @@ const printError = (diagnostic) => {
 					jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (jsdoc[0]);
 				}
 			}
-			const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
+			const type = getTypeOfSymbol(p, false);
 			const optional =
 				canBeOptional &&
 				((type.getFlags() & ts.TypeFlags.Any) !== 0 ||
@@ -613,7 +658,7 @@ const printError = (diagnostic) => {
 			params[params.length - 1].name === "args"
 		) {
 			const p = params[params.length - 1];
-			const type = checker.getTypeOfSymbolAtLocation(p, p.valueDeclaration);
+			const type = getTypeOfSymbol(p, false);
 			if (type.intrinsicName === "error") {
 				// This fixes a problem that typescript adds `...args: any[]` to a signature when `arguments` as text is used in body
 				params.pop();
@@ -629,12 +674,25 @@ const printError = (diagnostic) => {
 			args: params.reverse().map(parseParameter).reverse(),
 			returnType: signature.getReturnType(),
 			thisType: signature.thisParameter
-				? checker.getTypeOfSymbolAtLocation(
-						signature.thisParameter,
-						signature.thisParameter.valueDeclaration
-				  )
+				? getTypeOfSymbol(signature.thisParameter, false)
 				: undefined,
 		};
+	};
+
+	const isNodeModulesSource = (sourceFile) => {
+		return (
+			sourceFile.isDeclarationFile &&
+			sourceFile.fileName.slice(rootPath.length + 1).startsWith("node_modules/")
+		);
+	};
+	const getRootPackage = (sourceFile) => {
+		const match = /^(node_modules\/(@[^/]+\/)?[^/]+)/.exec(
+			sourceFile.fileName.slice(rootPath.length + 1)
+		);
+		if (!match) return undefined;
+		const pkg = require(rootPath + "/" + match[1] + "/package.json");
+		const types = pkg.types || "index.d.ts";
+		return program.getSourceFile(rootPath + "/" + match[1] + "/" + types);
 	};
 
 	/**
@@ -662,12 +720,9 @@ const printError = (diagnostic) => {
 				if (name.startsWith("__@") && !/^__@[^@]+$/.test(name)) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
-				let innerType = prop.type;
+				let innerType = getTypeOfSymbol(prop, true);
 				const decl = getDeclaration(prop);
 				if (decl) {
-					if (!innerType) {
-						innerType = checker.getTypeOfSymbolAtLocation(prop, decl);
-					}
 					modifierFlags = ts.getCombinedModifierFlags(decl);
 				}
 				if (!innerType) continue;
@@ -722,6 +777,8 @@ const printError = (diagnostic) => {
 			};
 		}
 
+		/** @type {ts.TypeNode} */
+		let typeNode = /** @type {any} */ (type)._typeNode;
 		if (type.aliasSymbol) {
 			const aliasType = checker.getDeclaredTypeOfSymbol(type.aliasSymbol);
 			if (aliasType && aliasType !== type) {
@@ -735,6 +792,63 @@ const printError = (diagnostic) => {
 						aliasType.isClassOrInterface() && aliasType.typeParameters
 					),
 				};
+			}
+		}
+
+		if (typeNode && !isNodeModulesSource(typeNode.getSourceFile())) {
+			switch (typeNode.kind) {
+				case ts.SyntaxKind.IndexedAccessType: {
+					const {
+						objectType,
+						indexType,
+					} = /** @type {ts.IndexedAccessTypeNode} */ (typeNode);
+					const objectTypeType = checker.getTypeAtLocation(objectType);
+					/** @type {any} */ (objectTypeType)._typeNode = objectType;
+					const indexTypeType = checker.getTypeAtLocation(indexType);
+					/** @type {any} */ (indexTypeType)._typeNode = indexType;
+					if (objectTypeType && indexTypeType) {
+						return {
+							type: "index",
+							symbolName: parseName(type),
+							objectType: objectTypeType,
+							indexType: indexTypeType,
+						};
+					}
+					break;
+				}
+				case ts.SyntaxKind.TypeReference: {
+					const {
+						typeArguments,
+						typeName,
+					} = /** @type {ts.TypeReferenceNode} */ (typeNode);
+					const typeArgumentsTypes = typeArguments
+						? typeArguments.map((node) => {
+								const type = checker.getTypeAtLocation(node);
+								if (type) {
+									/** @type {any} */ (type)._typeNode = node;
+								}
+								return type;
+						  })
+						: [];
+					const targetSymbol = checker.getSymbolAtLocation(typeName);
+					const targetType = getTypeOfSymbol(targetSymbol, false);
+					if (
+						typeArgumentsTypes.every(Boolean) &&
+						targetType &&
+						targetType !== type
+					) {
+						return {
+							type: "reference",
+							target: targetType,
+							typeArguments: typeArgumentsTypes,
+							typeArgumentsWithoutDefaults: omitDefaults(
+								typeArgumentsTypes,
+								targetType.isClassOrInterface() && targetType.typeParameters
+							),
+						};
+					}
+					break;
+				}
 			}
 		}
 
@@ -852,25 +966,48 @@ const printError = (diagnostic) => {
 
 		if (symbol) {
 			const decl = getDeclaration(symbol);
-			if (
-				decl &&
-				decl.getSourceFile().isDeclarationFile &&
-				decl
-					.getSourceFile()
-					.fileName.slice(rootPath.length + 1)
-					.startsWith("node_modules/")
-			) {
-				const externalSource = decl.getSourceFile();
-				const symbolToExport = getExportsOfSourceFile(externalSource);
-				const exportName = symbolToExport.get(/** @type {any} */ (decl).symbol);
+			if (decl && isNodeModulesSource(decl.getSourceFile())) {
+				let symbol = /** @type {any} */ (decl).symbol;
+				const isValue = !!(
+					symbol &&
+					symbol.valueDeclaration &&
+					(symbol.flags & ts.SymbolFlags.Function ||
+						symbol.flags & ts.SymbolFlags.Class)
+				);
+				const potentialSources = [
+					getRootPackage(decl.getSourceFile()),
+					decl.getSourceFile(),
+				].filter(Boolean);
+				let externalSource;
+				let exportName;
+				outer: for (const source of potentialSources) {
+					externalSource = source;
+					const symbolToExport = getExportsOfSourceFile(externalSource);
+					exportName = symbolToExport.get(symbol);
+					if (exportName) break;
+					for (const [key, name] of symbolToExport) {
+						if (getTypeOfSymbol(key, false) === type) {
+							symbol = key;
+							exportName = name;
+							break outer;
+						}
+					}
+				}
 				if (exportName === undefined) {
 					if (verbose) {
 						console.log(
 							`${parseName(type).join(
 								" "
-							)} is an imported symbol, but couldn't find export in ${
-								externalSource.fileName
-							} (exports: ${[...symbolToExport.values()].sort().join(", ")})`
+							)} is an imported symbol, but couldn't find export in ${potentialSources.map(
+								(source) => {
+									const symbolToExport = getExportsOfSourceFile(source);
+									return `${source.fileName} (exports: ${[
+										...symbolToExport.values(),
+									]
+										.sort()
+										.join(", ")})`;
+								}
+							)}`
 						);
 					}
 				} else {
@@ -904,6 +1041,7 @@ const printError = (diagnostic) => {
 								]),
 								exportName,
 								from,
+								isValue,
 							};
 						}
 					} else {
@@ -914,6 +1052,7 @@ const printError = (diagnostic) => {
 								symbolName: parseName(type, [toIdentifier(match[2]), "Import"]),
 								exportName: match[2],
 								from: match[1],
+								isValue,
 							};
 						}
 						return {
@@ -964,7 +1103,7 @@ const printError = (diagnostic) => {
 					  type.aliasTypeArguments.length > 0
 					? type.aliasTypeArguments
 					: undefined,
-			documentation: getDocumentation(symbol),
+			documentation: getDocumentation(type.getSymbol()),
 		};
 	};
 
@@ -1011,6 +1150,10 @@ const printError = (diagnostic) => {
 				for (const inner of parsed.types) captureType(type, inner);
 				if (parsed.typeParameters)
 					for (const prop of parsed.typeParameters) captureType(type, prop);
+				break;
+			case "index":
+				captureType(type, parsed.objectType);
+				captureType(type, parsed.indexType);
 				break;
 			case "reference":
 				captureType(type, parsed.target);
@@ -1360,6 +1503,10 @@ const printError = (diagnostic) => {
 				const { target, typeArgumentsWithoutDefaults } = parsed;
 				if (typeArgumentsWithoutDefaults.length === 0) return undefined;
 				return [parsed.type, target, ...typeArgumentsWithoutDefaults];
+			}
+			case "index": {
+				const { objectType, indexType } = parsed;
+				return [parsed.type, objectType, indexType];
 			}
 			case "union":
 			case "intersection": {
@@ -1862,6 +2009,12 @@ const printError = (diagnostic) => {
 				code += "`";
 				return code;
 			}
+			case "index": {
+				return `(${getCode(parsed.objectType, typeArgs)})[${getCode(
+					parsed.indexType,
+					typeArgs
+				)}]`;
+			}
 			case "union":
 			case "intersection": {
 				/**
@@ -2084,7 +2237,10 @@ const printError = (diagnostic) => {
 			case "import": {
 				const variable = typeToVariable.get(type);
 				addImport(parsed.exportName, variable, parsed.from);
-				return variable;
+				return (
+					(parsed.isValue && state !== "with type args" ? "typeof " : "") +
+					variable
+				);
 			}
 		}
 		return `unknown /* failed to generate code: ${parsed.type} */`;
