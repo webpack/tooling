@@ -117,8 +117,27 @@ const processJson = processSchema.bind(null, {
 		if (json.definitions) {
 			json.definitions = { ...json.definitions };
 			for (const key of Object.keys(json.definitions)) {
-				const baseDef = baseDefinitions.get(key);
+				let baseDef = baseDefinitions.get(key);
 				if (baseDef) {
+					baseDef = processSchema(
+						{
+							schema: (json) => {
+								const tsType = json.tsType;
+								if (tsType) {
+									json = {
+										...json,
+										tsType: tsType.replace(
+											/\.\.\//g,
+											context.importPrefix + "../"
+										),
+									};
+								}
+								return json;
+							},
+						},
+						baseDef,
+						{}
+					);
 					json.definitions[key] = baseDef;
 				}
 			}
@@ -169,6 +188,7 @@ const formatSchema = (schemaPath) => {
 	const processedJson = processJson(json, {
 		schema: json,
 		definitions: json.definitions,
+		importPrefix: "../".repeat(schemaPath.split(/[\\/]/).length - minSlashes),
 	});
 	const rawString = JSON.stringify(processedJson, null, 2);
 	const config = prettier.resolveConfig.sync(schemaPath);
