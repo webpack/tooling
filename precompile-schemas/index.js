@@ -15,6 +15,7 @@ const standaloneCode = require("ajv/dist/standalone").default;
 const ajv = new Ajv({
 	code: { source: true, optimize: true },
 	messages: false,
+	strictNumbers: false,
 	logger: false,
 	loadSchema: (uri) => {
 		schemaPath = fileURLToPath(uri);
