@@ -8,6 +8,7 @@ const glob = require("glob");
 const findCommonDir = require("commondir");
 const { pathToFileURL, fileURLToPath } = require("url");
 const processSchema = require("../lib/process-schema");
+const prettier = require("prettier");
 const terser = require("terser");
 const { default: Ajv, _, Name } = require("ajv");
 const standaloneCode = require("ajv/dist/standalone").default;
@@ -125,6 +126,13 @@ const postprocess = async (code) => {
 			toplevel: true,
 		})
 	).code;
+
+	// format to enable diff merging
+	code = prettier.format(code, {
+		parser: "typescript",
+		printWidth: 200,
+		tabWidth: 0,
+	});
 
 	// banner
 	code = `/*
