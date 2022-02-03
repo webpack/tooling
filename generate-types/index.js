@@ -503,7 +503,7 @@ const printError = (diagnostic) => {
 	/** @typedef {{ name: string, optional: boolean, spread: boolean, documentation: string, type: ts.Type }} ParsedParameter */
 	/** @typedef {{ documentation: string, typeParameters?: readonly ts.Type[], args: ParsedParameter[], thisType: ts.Type, returnType: ts.Type }} ParsedSignature */
 	/** @typedef {string[]} SymbolName */
-	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, documentation: string }>} PropertiesMap */
+	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, getter: boolean, documentation: string }>} PropertiesMap */
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
 	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type, defaultValue: ts.Type }} ParsedTypeParameterType */
@@ -746,10 +746,9 @@ const printError = (diagnostic) => {
 					type: innerType,
 					method: (flags & ts.SymbolFlags.Method) !== 0,
 					optional: (flags & ts.SymbolFlags.Optional) !== 0,
-					readonly:
-						((flags & ts.SymbolFlags.GetAccessor) !== 0 &&
-							(flags & ts.SymbolFlags.SetAccessor) === 0) ||
-						(modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+					readonly: (modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+					getter: ((flags & ts.SymbolFlags.GetAccessor) !== 0 &&
+						(flags & ts.SymbolFlags.SetAccessor) === 0),
 					documentation: getDocumentation(prop),
 				});
 			}
@@ -1919,7 +1918,7 @@ const printError = (diagnostic) => {
 		const handleProperties = (properties, prefix = "") => {
 			for (const [
 				name,
-				{ type: propType, optional, readonly, method, documentation },
+				{ getter, type: propType, optional, readonly, method, documentation },
 			] of properties) {
 				if (method) {
 					let methodInfo = parsedCollectedTypes.get(propType);
@@ -1964,11 +1963,15 @@ const printError = (diagnostic) => {
 					getCode(propType, typeArgs),
 					optional
 				);
-				const p = prefix + (readonly ? "readonly " : "");
-				if (opt) {
-					items.push(`${documentation}${p}${name}?: ${code}`);
+				if (!getter) {
+					const p = prefix + (readonly ? "readonly " : "");
+					if (opt) {
+						items.push(`${documentation}${p}${name}?: ${code}`);
+					} else {
+						items.push(`${documentation}${p}${name}: ${code}`);
+					}
 				} else {
-					items.push(`${documentation}${p}${name}: ${code}`);
+					items.push(`${documentation}get ${name}(): ${code}`);
 				}
 			}
 		};
