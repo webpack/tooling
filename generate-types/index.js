@@ -351,6 +351,7 @@ const printError = (diagnostic) => {
 					return type;
 				}
 			}
+			if (symbol.type) return symbol.type;
 			const decls = symbol.getDeclarations();
 			decl = decls && decls[0];
 			type = checker.getTypeOfSymbolAtLocation(symbol, decl || {});
@@ -717,7 +718,7 @@ const printError = (diagnostic) => {
 				if (!isIncluded(nameForFilter)) {
 					if (name.startsWith("_") && !name.startsWith("__")) continue;
 				}
-				if (name.startsWith("__@") && !/^__@[^@]+$/.test(name)) continue;
+				if (name.startsWith("__@") && (prop.flags & ts.TypeFlags.ESSymbolLike) === 0) continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
 				let innerType = getTypeOfSymbol(prop, true);
@@ -731,7 +732,7 @@ const printError = (diagnostic) => {
 				}
 				const flags = prop.getFlags();
 				if (name.startsWith("__@")) {
-					name = `[Symbol.${name.slice(3)}]`;
+					name = `[Symbol.${name.slice(3, name.lastIndexOf('@'))}]`;
 				} else if (!/^[_a-zA-Z$][_a-zA-Z$0-9]*$/.test(name)) {
 					name = JSON.stringify(name);
 				}
@@ -877,7 +878,6 @@ const printError = (diagnostic) => {
 		}
 
 		if (type.intrinsicName) {
-			if (type.intrinsicName === "error") debugger;
 			return {
 				type: "primitive",
 				name: type.intrinsicName === "error" ? "any" : type.intrinsicName,
@@ -1847,9 +1847,10 @@ const printError = (diagnostic) => {
 							code: getCode(arg.type, innerTypeArgs),
 							optional: false,
 					  };
-				canBeOptional = canBeOptional && optional;
+				const isCurrentOptional = optional && !arg.spread;
+				canBeOptional = canBeOptional && isCurrentOptional;
 				return `${arg.spread ? "..." : ""}${arg.name}${
-					optional ? "?" : ""
+					isCurrentOptional ? "?" : ""
 				}: ${code}`;
 			})
 			.reverse()
