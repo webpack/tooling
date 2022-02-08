@@ -599,7 +599,7 @@ const printError = (diagnostic) => {
 		if (comments.length === 0) return "";
 		return `\n/**\n * ${comments
 			.map((c) => c.text)
-			.join("\n")
+			.join("")
 			.replace(/\n+/g, "\n * ")}\n */\n`;
 	};
 
@@ -718,7 +718,11 @@ const printError = (diagnostic) => {
 				if (!isIncluded(nameForFilter)) {
 					if (name.startsWith("_") && !name.startsWith("__")) continue;
 				}
-				if (name.startsWith("__@") && (prop.flags & ts.TypeFlags.ESSymbolLike) === 0) continue;
+				if (
+					name.startsWith("__@") &&
+					(prop.flags & ts.TypeFlags.ESSymbolLike) === 0
+				)
+					continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
 				let modifierFlags;
 				let innerType = getTypeOfSymbol(prop, true);
@@ -732,7 +736,7 @@ const printError = (diagnostic) => {
 				}
 				const flags = prop.getFlags();
 				if (name.startsWith("__@")) {
-					name = `[Symbol.${name.slice(3, name.lastIndexOf('@'))}]`;
+					name = `[Symbol.${name.slice(3, name.lastIndexOf("@"))}]`;
 				} else if (!/^[_a-zA-Z$][_a-zA-Z$0-9]*$/.test(name)) {
 					name = JSON.stringify(name);
 				}
