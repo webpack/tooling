@@ -175,10 +175,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 			const { implements, ...remainingSchema } = schema;
 			root.definitions[key] = {
 				...remainingSchema,
-				properties: propEntries.reduce((obj, [name, value]) => {
-					obj[name] = value;
-					return obj;
-				}, {}),
+				properties: Object.fromEntries(propEntries),
 			};
 			preprocessSchema(root.definitions[key], root, [key]);
 		}
