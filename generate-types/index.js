@@ -747,8 +747,9 @@ const printError = (diagnostic) => {
 					method: (flags & ts.SymbolFlags.Method) !== 0,
 					optional: (flags & ts.SymbolFlags.Optional) !== 0,
 					readonly: (modifierFlags & ts.ModifierFlags.Readonly) !== 0,
-					getter: ((flags & ts.SymbolFlags.GetAccessor) !== 0 &&
-						(flags & ts.SymbolFlags.SetAccessor) === 0),
+					getter:
+						(flags & ts.SymbolFlags.GetAccessor) !== 0 &&
+						(flags & ts.SymbolFlags.SetAccessor) === 0,
 					documentation: getDocumentation(prop),
 				});
 			}
