@@ -354,13 +354,15 @@ const printError = (diagnostic) => {
 			if (symbol.type) return symbol.type;
 			const decls = symbol.getDeclarations();
 			decl = decls && decls[0];
-			type = checker.getTypeOfSymbolAtLocation(symbol, decl || {});
-			if (type && type.intrinsicName !== "error") {
-				return type;
-			}
-			type = checker.getTypeAtLocation(decl);
-			if (type && type.intrinsicName !== "error") {
-				return type;
+			if (decl) {
+				type = checker.getTypeOfSymbolAtLocation(symbol, decl);
+				if (type && type.intrinsicName !== "error") {
+					return type;
+				}
+				type = checker.getTypeAtLocation(decl);
+				if (type && type.intrinsicName !== "error") {
+					return type;
+				}
 			}
 		})();
 		if (type && decl) {
@@ -501,7 +503,7 @@ const printError = (diagnostic) => {
 	/** @typedef {{ name: string, optional: boolean, spread: boolean, documentation: string, type: ts.Type }} ParsedParameter */
 	/** @typedef {{ documentation: string, typeParameters?: readonly ts.Type[], args: ParsedParameter[], thisType: ts.Type, returnType: ts.Type }} ParsedSignature */
 	/** @typedef {string[]} SymbolName */
-	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, documentation: string }>} PropertiesMap */
+	/** @typedef {Map<string, { type: ts.Type, method: boolean, optional: boolean, readonly: boolean, getter: boolean, documentation: string }>} PropertiesMap */
 
 	/** @typedef {{ type: "primitive", name: string }} ParsedPrimitiveType */
 	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type, defaultValue: ts.Type }} ParsedTypeParameterType */
@@ -744,10 +746,10 @@ const printError = (diagnostic) => {
 					type: innerType,
 					method: (flags & ts.SymbolFlags.Method) !== 0,
 					optional: (flags & ts.SymbolFlags.Optional) !== 0,
-					readonly:
-						((flags & ts.SymbolFlags.GetAccessor) !== 0 &&
-							(flags & ts.SymbolFlags.SetAccessor) === 0) ||
-						(modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+					readonly: (modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+					getter:
+						(flags & ts.SymbolFlags.GetAccessor) !== 0 &&
+						(flags & ts.SymbolFlags.SetAccessor) === 0,
 					documentation: getDocumentation(prop),
 				});
 			}
@@ -1917,7 +1919,7 @@ const printError = (diagnostic) => {
 		const handleProperties = (properties, prefix = "") => {
 			for (const [
 				name,
-				{ type: propType, optional, readonly, method, documentation },
+				{ getter, type: propType, optional, readonly, method, documentation },
 			] of properties) {
 				if (method) {
 					let methodInfo = parsedCollectedTypes.get(propType);
@@ -1962,11 +1964,15 @@ const printError = (diagnostic) => {
 					getCode(propType, typeArgs),
 					optional
 				);
-				const p = prefix + (readonly ? "readonly " : "");
-				if (opt) {
-					items.push(`${documentation}${p}${name}?: ${code}`);
+				if (!getter) {
+					const p = prefix + (readonly ? "readonly " : "");
+					if (opt) {
+						items.push(`${documentation}${p}${name}?: ${code}`);
+					} else {
+						items.push(`${documentation}${p}${name}: ${code}`);
+					}
 				} else {
-					items.push(`${documentation}${p}${name}: ${code}`);
+					items.push(`${documentation}get ${name}(): ${code}`);
 				}
 			}
 		};
@@ -2165,7 +2171,7 @@ const printError = (diagnostic) => {
 					const exposedNames = new Set();
 					for (const [
 						name,
-						{ type: exportedType, optional, readonly, method },
+						{ type: exportedType, optional, readonly, getter, method },
 					] of parsed.exports) {
 						const code = getCode(
 							exportedType,
@@ -2181,12 +2187,14 @@ const printError = (diagnostic) => {
 							);
 						} else if (name === "default") {
 							declarations.push(
-								`${readonly ? "const" : "let"} _default: ${code};\n`
+								`${readonly || getter ? "const" : "let"} _default: ${code};\n`
 							);
 							exports.push(`_default as default`);
 						} else {
 							declarations.push(
-								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
+								`export ${
+									readonly || getter ? "const" : "let"
+								} ${name}: ${code};\n`
 							);
 						}
 					}
