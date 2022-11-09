@@ -48,6 +48,7 @@ for (const filename of schemas) {
 			"instanceof",
 			"tsType",
 			"not",
+			"link"
 		];
 
 		const isReference = (schema) => {
