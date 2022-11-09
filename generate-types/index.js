@@ -2171,7 +2171,7 @@ const printError = (diagnostic) => {
 					const exposedNames = new Set();
 					for (const [
 						name,
-						{ type: exportedType, optional, readonly, method },
+						{ type: exportedType, optional, readonly, getter, method },
 					] of parsed.exports) {
 						const code = getCode(
 							exportedType,
@@ -2187,12 +2187,14 @@ const printError = (diagnostic) => {
 							);
 						} else if (name === "default") {
 							declarations.push(
-								`${readonly ? "const" : "let"} _default: ${code};\n`
+								`${readonly || getter ? "const" : "let"} _default: ${code};\n`
 							);
 							exports.push(`_default as default`);
 						} else {
 							declarations.push(
-								`export ${readonly ? "const" : "let"} ${name}: ${code};\n`
+								`export ${
+									readonly || getter ? "const" : "let"
+								} ${name}: ${code};\n`
 							);
 						}
 					}
