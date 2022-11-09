@@ -135,9 +135,9 @@ for (const sourceFile of program.getSourceFiles()) {
 				});
 				for (const update of updates) {
 					fileContent =
-						fileContent.substr(0, update.start) +
+						fileContent.slice(0, update.start) +
 						update.content +
-						fileContent.substr(update.end);
+						fileContent.slice(update.end);
 				}
 				console.log(`${file} ${updates.length} JSDoc comments added/updated`);
 				fs.writeFileSync(file, fileContent, "utf-8");
