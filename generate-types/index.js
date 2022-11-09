@@ -354,13 +354,15 @@ const printError = (diagnostic) => {
 			if (symbol.type) return symbol.type;
 			const decls = symbol.getDeclarations();
 			decl = decls && decls[0];
-			type = checker.getTypeOfSymbolAtLocation(symbol, decl || {});
-			if (type && type.intrinsicName !== "error") {
-				return type;
-			}
-			type = checker.getTypeAtLocation(decl);
-			if (type && type.intrinsicName !== "error") {
-				return type;
+			if (decl) {
+				type = checker.getTypeOfSymbolAtLocation(symbol, decl);
+				if (type && type.intrinsicName !== "error") {
+					return type;
+				}
+				type = checker.getTypeAtLocation(decl);
+				if (type && type.intrinsicName !== "error") {
+					return type;
+				}
 			}
 		})();
 		if (type && decl) {
