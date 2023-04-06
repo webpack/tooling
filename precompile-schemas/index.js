@@ -178,7 +178,7 @@ const updateFile = (path, expected) => {
 			fs.writeFileSync(path, expected, "utf-8");
 			console.error(`${path} updated`);
 		} else {
-			console.error(`${path} need to be updated`);
+			console.error(`${path} need to be updated\nExpected:\n${expected}`);
 			process.exitCode = 1;
 		}
 	}
