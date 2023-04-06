@@ -112,7 +112,10 @@ const postprocess = async (code) => {
 		code = `const absolutePathRegExp = /^(?:[A-Za-z]:[\\\\/]|\\\\\\\\|\\/)/;${code}`;
 
 	// remove unneccessary error code:
-	code = code.replace(/\{instancePath[^{}]+,keyword:[^{}]+,/g, "{");
+	code = code
+		.replace(/\{instancePath[^{}]+,keyword:[^{}]+,/g, "{")
+		// remove extra "$id" property
+		.replace(/"\$id":".+?"/, "");
 
 	// minimize
 	code = (
