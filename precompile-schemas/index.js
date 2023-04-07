@@ -111,8 +111,11 @@ const postprocess = async (code) => {
 	if (/absolutePathRegExp/.test(code))
 		code = `const absolutePathRegExp = /^(?:[A-Za-z]:[\\\\/]|\\\\\\\\|\\/)/;${code}`;
 
-	// remove unneccessary error code:
-	code = code.replace(/\{instancePath[^{}]+,keyword:[^{}]+,/g, "{");
+	// remove unnecessary error code:
+	code = code
+		.replace(/\{instancePath[^{}]+,keyword:[^{}]+,/g, "{")
+		// remove extra "$id" property
+		.replace(/"\$id":".+?"/, "");
 
 	// minimize
 	code = (
@@ -175,7 +178,7 @@ const updateFile = (path, expected) => {
 			fs.writeFileSync(path, expected, "utf-8");
 			console.error(`${path} updated`);
 		} else {
-			console.error(`${path} need to be updated`);
+			console.error(`${path} need to be updated\nExpected:\n${expected}`);
 			process.exitCode = 1;
 		}
 	}
