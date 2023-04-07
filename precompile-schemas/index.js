@@ -111,8 +111,6 @@ const postprocess = async (code) => {
 	if (/absolutePathRegExp/.test(code))
 		code = `const absolutePathRegExp = /^(?:[A-Za-z]:[\\\\/]|\\\\\\\\|\\/)/;${code}`;
 
-	console.log(`Actual code:\n${code}`);
-
 	// remove unnecessary error code:
 	code = code
 		.replace(/\{instancePath[^{}]+,keyword:[^{}]+,/g, "{")
