@@ -62,6 +62,14 @@ ajv.addKeyword({
 	},
 });
 
+ajv.addKeyword({
+	keyword: "undefinedAsNull",
+	schemaType: "boolean",
+
+	code(ctx) {
+		// Nothing, just to avoid failing
+	},
+});
 ajv.removeKeyword("enum");
 ajv.addKeyword({
 	keyword: "enum",
@@ -69,7 +77,7 @@ ajv.addKeyword({
 	$data: true,
 
 	code(ctx) {
-		const { data, schema } = ctx;
+		const { data, schema, parentSchema } = ctx;
 		for (const item of schema) {
 			if (typeof item === "object" && item !== null) {
 				throw new Error(
@@ -81,8 +89,17 @@ ajv.addKeyword({
 				);
 			}
 		}
+
 		ctx.fail(
-			schema.map((x) => _`${data} !== ${x}`).reduce((a, b) => _`${a} && ${b}`)
+			schema
+				.map((x) => {
+					if (x === null && parentSchema.undefinedAsNull) {
+						return _`${data} !== null && ${data} !== undefined`;
+					}
+
+					return _`${data} !== ${x}`;
+				})
+				.reduce((a, b) => _`${a} && ${b}`)
 		);
 	},
 });
