@@ -101,6 +101,9 @@ const PROPERTIES = [
 	"enum",
 
 	"absolutePath",
+
+	"undefinedAsNull",
+
 	"minLength",
 
 	"minimum",

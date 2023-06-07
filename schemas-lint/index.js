@@ -35,6 +35,7 @@ for (const filename of schemas) {
 			"oneOf",
 			"anyOf",
 			"absolutePath",
+			"undefinedAsNull",
 			"description",
 			"enum",
 			"minLength",
