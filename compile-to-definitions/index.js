@@ -14,15 +14,6 @@ const glob = require("glob");
 const findCommonDir = require("commondir");
 const { compile } = require("json-schema-to-typescript");
 
-const prettierConfig = prettier.resolveConfig.sync(
-	path.resolve(root, outputFolder, "result.d.ts")
-);
-const style = {
-	printWidth: prettierConfig.printWidth,
-	useTabs: prettierConfig.useTabs,
-	tabWidth: prettierConfig.tabWidth,
-};
-
 const makeSchemas = () => {
 	const schemas = glob.sync(schemasGlob, { cwd: root, absolute: true });
 	const commonDir = path.resolve(findCommonDir(schemas));
@@ -31,7 +22,7 @@ const makeSchemas = () => {
 	}
 };
 
-const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
+const makeDefinitionsForSchema = async (absSchemaPath, schemasDir) => {
 	if (path.basename(absSchemaPath).startsWith("_")) return;
 	const relPath = path.relative(schemasDir, absSchemaPath);
 	const directory = path.dirname(relPath);
@@ -44,6 +35,16 @@ const makeDefinitionsForSchema = (absSchemaPath, schemasDir) => {
 	const schema = JSON.parse(fs.readFileSync(absSchemaPath, "utf-8"));
 	const keys = Object.keys(schema);
 	if (keys.length === 1 && keys[0] === "$ref") return;
+
+	const prettierConfig = await prettier.resolveConfig(
+		path.resolve(root, outputFolder, "result.d.ts")
+	);
+	const style = {
+		printWidth: prettierConfig.printWidth,
+		useTabs: prettierConfig.useTabs,
+		tabWidth: prettierConfig.tabWidth,
+	};
+
 	preprocessSchema(schema);
 	compile(schema, basename, {
 		bannerComment:
