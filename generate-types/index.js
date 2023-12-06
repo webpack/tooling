@@ -2349,7 +2349,7 @@ const printError = (diagnostic) => {
 			return;
 		}
 
-		source = prettier.format(source, prettierOptions);
+		source = await prettier.format(source, prettierOptions);
 	} catch (e) {
 		exitCode = 1;
 		console.error(e.message);

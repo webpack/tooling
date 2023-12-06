@@ -186,7 +186,7 @@ const processJson = processSchema.bind(null, {
 	},
 });
 
-const formatSchema = (schemaPath) => {
+const formatSchema = async (schemaPath) => {
 	const json = require(schemaPath);
 	const processedJson = processJson(json, {
 		schema: json,
@@ -194,8 +194,8 @@ const formatSchema = (schemaPath) => {
 		importPrefix: "../".repeat(schemaPath.split(/[\\/]/).length - minSlashes),
 	});
 	const rawString = JSON.stringify(processedJson, null, 2);
-	const config = prettier.resolveConfig.sync(schemaPath);
-	const prettyString = prettier.format(rawString, config);
+	const config = await prettier.resolveConfig(schemaPath);
+	const prettyString = await prettier.format(rawString, config);
 	let normalizedContent = "";
 	try {
 		const content = fs.readFileSync(schemaPath, "utf-8");
