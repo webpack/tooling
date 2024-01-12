@@ -627,7 +627,9 @@ const printError = (diagnostic) => {
 					jsdoc.length > 0 &&
 					jsdoc[0].kind === ts.SyntaxKind.JSDocParameterTag
 				) {
-					jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (jsdoc[0]);
+					jsdocParamDeclaration = /** @type {ts.JSDocParameterTag} */ (
+						jsdoc[0]
+					);
 				}
 			}
 			const type = getTypeOfSymbol(p, false);
@@ -805,10 +807,8 @@ const printError = (diagnostic) => {
 		if (typeNode && !isNodeModulesSource(typeNode.getSourceFile())) {
 			switch (typeNode.kind) {
 				case ts.SyntaxKind.IndexedAccessType: {
-					const {
-						objectType,
-						indexType,
-					} = /** @type {ts.IndexedAccessTypeNode} */ (typeNode);
+					const { objectType, indexType } =
+						/** @type {ts.IndexedAccessTypeNode} */ (typeNode);
 					const objectTypeType = checker.getTypeAtLocation(objectType);
 					/** @type {any} */ (objectTypeType)._typeNode = objectType;
 					const indexTypeType = checker.getTypeAtLocation(indexType);
@@ -824,10 +824,8 @@ const printError = (diagnostic) => {
 					break;
 				}
 				case ts.SyntaxKind.TypeReference: {
-					const {
-						typeArguments,
-						typeName,
-					} = /** @type {ts.TypeReferenceNode} */ (typeNode);
+					const { typeArguments, typeName } =
+						/** @type {ts.TypeReferenceNode} */ (typeNode);
 					const typeArgumentsTypes = typeArguments
 						? typeArguments.map((node) => {
 								const type = checker.getTypeAtLocation(node);
@@ -1018,9 +1016,10 @@ const printError = (diagnostic) => {
 					}
 				} else {
 					if (isSourceFileModule(externalSource)) {
-						const match = /^(.+\/node_modules\/(?:@types\/)?)((?:@[^/]+\/)?[^/]+)(.*?)(\.d\.ts)?$/.exec(
-							externalSource.fileName
-						);
+						const match =
+							/^(.+\/node_modules\/(?:@types\/)?)((?:@[^/]+\/)?[^/]+)(.*?)(\.d\.ts)?$/.exec(
+								externalSource.fileName
+							);
 						if (!match) {
 							console.error(
 								`${externalSource.fileName} doesn't match node_modules import schema`
@@ -2134,9 +2133,9 @@ const printError = (diagnostic) => {
 					parsed.type === "typeof class" ? parsed.correspondingType : type;
 				const variable = typeToVariable.get(classType);
 				queueDeclaration(classType, variable, () => {
-					const parsed = /** @type {MergedClassType} */ (parsedCollectedTypes.get(
-						classType
-					));
+					const parsed = /** @type {MergedClassType} */ (
+						parsedCollectedTypes.get(classType)
+					);
 					const typeArgs = new Set(parsed.typeParameters);
 					return `declare ${
 						parsed.constructors.length === 0 ? "abstract class" : "class"
@@ -2251,8 +2250,9 @@ const printError = (diagnostic) => {
 				const variable = typeToVariable.get(type);
 				addImport(parsed.exportName, variable, parsed.from);
 				return (
-					(parsed.isValue && state !== "with type args" ? "typeof " : "") +
-					variable
+					(parsed.isValue && !type.isClass() && state !== "with type args"
+						? "typeof "
+						: "") + variable
 				);
 			}
 		}
