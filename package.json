@@ -20,7 +20,7 @@
     "@types/node": "^14.14.14",
     "@types/yargs": "^15.0.12",
     "prettier": "^3.0.1",
-    "typescript": "^5.0.4"
+    "typescript": "^5.4.2"
   },
   "dependencies": {
     "@yarnpkg/lockfile": "^1.1.0",

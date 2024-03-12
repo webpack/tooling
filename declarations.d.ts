@@ -6,6 +6,7 @@ declare module "typescript" {
 	export function signatureHasRestParameter(signature: ts.Signature): boolean;
 	interface Symbol {
 		type?: ts.Type;
+		parent: Symbol | undefined
 	}
 	interface Declaration {
 		expression?: ts.Expression;
