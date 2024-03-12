@@ -341,6 +341,24 @@ const printError = (diagnostic) => {
 		);
 	};
 
+	/**
+	 * @param {ts.Symbol} current current
+	 * @returns {string} full escaped name
+	 */
+	const getFullEscapedName = (current) => {
+		let name = current.escapedName.toString();
+		while (current.parent) {
+			current = current.parent;
+			if (
+				current.escapedName === undefined ||
+				current.escapedName.toString() === "__global"
+			)
+				break;
+			name = `${current.escapedName.toString()}.${name}`;
+		}
+		return name;
+	}
+
 	const getTypeOfSymbol = (symbol, isValue) => {
 		let decl;
 		const type = (() => {
@@ -969,6 +987,18 @@ const printError = (diagnostic) => {
 		}
 
 		if (symbol) {
+			// Handle `NodeJS` prefix for global types
+			if (symbol.escapedName !== undefined) {
+				const fullEscapedName = getFullEscapedName(symbol);
+
+				if (fullEscapedName.includes("NodeJS.")) {
+					return {
+						type: "primitive",
+						name: fullEscapedName,
+					};
+				}
+			}
+
 			const decl = getDeclaration(symbol);
 			if (decl && isNodeModulesSource(decl.getSourceFile())) {
 				let symbol = /** @type {any} */ (decl).symbol;
