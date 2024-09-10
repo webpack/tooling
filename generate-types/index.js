@@ -29,7 +29,7 @@ const toIdentifier = (str) => {
 const joinIdentifer = (list) => {
 	const str = list.join("_");
 	return str.replace(/([^_])_+(.|$)/g, (m, a, b) =>
-		a !== a.toLowerCase() ? `${a}_${b}` : a + b.toUpperCase()
+		a !== a.toLowerCase() ? `${a}_${b}` : a + b.toUpperCase(),
 	);
 };
 
@@ -186,15 +186,15 @@ class TupleMap {
 const printError = (diagnostic) => {
 	if (diagnostic.file && typeof diagnostic.start === "number") {
 		let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
-			diagnostic.start
+			diagnostic.start,
 		);
 		let message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
 		console.error(
-			`${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`
+			`${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`,
 		);
 	} else {
 		console.error(
-			ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
+			ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
 		);
 	}
 };
@@ -225,7 +225,7 @@ const printError = (diagnostic) => {
 		rootPath,
 		{
 			noEmit: true,
-		}
+		},
 	);
 
 	if (parsedConfig.errors && parsedConfig.errors.length > 0) {
@@ -237,7 +237,7 @@ const printError = (diagnostic) => {
 
 	const program = ts.createProgram(
 		parsedConfig.fileNames,
-		parsedConfig.options
+		parsedConfig.options,
 	);
 
 	const checker = program.getTypeChecker();
@@ -357,7 +357,7 @@ const printError = (diagnostic) => {
 			name = `${current.escapedName.toString()}.${name}`;
 		}
 		return name;
-	}
+	};
 
 	const getTypeOfSymbol = (symbol, isValue) => {
 		let decl;
@@ -469,7 +469,7 @@ const printError = (diagnostic) => {
 					symbol.exports.forEach((symbol, name) => {
 						map.set(
 							symbol,
-							`${namespaceName}.${ts.unescapeLeadingUnderscores(name)}`
+							`${namespaceName}.${ts.unescapeLeadingUnderscores(name)}`,
 						);
 					});
 				}
@@ -492,11 +492,11 @@ const printError = (diagnostic) => {
 
 	for (const exposedFile of exposedFiles) {
 		const exposedSource = program.getSourceFile(
-			path.resolve(rootPath, exposedFile)
+			path.resolve(rootPath, exposedFile),
 		);
 		if (!exposedSource) {
 			console.error(
-				`No source found for ${exposedFile}. These files are available:`
+				`No source found for ${exposedFile}. These files are available:`,
 			);
 			for (const source of program.getSourceFiles()) {
 				console.error(` - ${source.fileName}`);
@@ -575,7 +575,7 @@ const printError = (diagnostic) => {
 					.fileName.slice(rootPath.length + 1)
 					.replace(/^.*\/(?!index)/, "")
 					.replace(/^lib\./, "")
-					.replace(/\.(js|(d\.)?ts)$/, "")
+					.replace(/\.(js|(d\.)?ts)$/, ""),
 			);
 		const syntaxType =
 			valueDeclaration &&
@@ -710,7 +710,7 @@ const printError = (diagnostic) => {
 	};
 	const getRootPackage = (sourceFile) => {
 		const match = /^(node_modules\/(@[^/]+\/)?[^/]+)/.exec(
-			sourceFile.fileName.slice(rootPath.length + 1)
+			sourceFile.fileName.slice(rootPath.length + 1),
 		);
 		if (!match) return undefined;
 		const pkg = require(rootPath + "/" + match[1] + "/package.json");
@@ -816,7 +816,7 @@ const printError = (diagnostic) => {
 					typeArguments,
 					typeArgumentsWithoutDefaults: omitDefaults(
 						typeArguments,
-						aliasType.isClassOrInterface() && aliasType.typeParameters
+						aliasType.isClassOrInterface() && aliasType.typeParameters,
 					),
 				};
 			}
@@ -866,7 +866,7 @@ const printError = (diagnostic) => {
 							typeArguments: typeArgumentsTypes,
 							typeArgumentsWithoutDefaults: omitDefaults(
 								typeArgumentsTypes,
-								targetType.isClassOrInterface() && targetType.typeParameters
+								targetType.isClassOrInterface() && targetType.typeParameters,
 							),
 						};
 					}
@@ -980,7 +980,7 @@ const printError = (diagnostic) => {
 					typeArguments,
 					typeArgumentsWithoutDefaults: omitDefaults(
 						typeArguments,
-						typeRef.target.typeParameters
+						typeRef.target.typeParameters,
 					),
 				};
 			}
@@ -1031,7 +1031,7 @@ const printError = (diagnostic) => {
 					if (verbose) {
 						console.log(
 							`${parseName(type).join(
-								" "
+								" ",
 							)} is an imported symbol, but couldn't find export in ${potentialSources.map(
 								(source) => {
 									const symbolToExport = getExportsOfSourceFile(source);
@@ -1040,26 +1040,26 @@ const printError = (diagnostic) => {
 									]
 										.sort()
 										.join(", ")})`;
-								}
-							)}`
+								},
+							)}`,
 						);
 					}
 				} else {
 					if (isSourceFileModule(externalSource)) {
 						const match =
 							/^(.+\/node_modules\/(?:@types\/)?)((?:@[^/]+\/)?[^/]+)(.*?)(\.d\.ts)?$/.exec(
-								externalSource.fileName
+								externalSource.fileName,
 							);
 						if (!match) {
 							console.error(
-								`${externalSource.fileName} doesn't match node_modules import schema`
+								`${externalSource.fileName} doesn't match node_modules import schema`,
 							);
 						} else {
 							let from = match[2] + match[3];
 							try {
 								const pkg = require(match[1] + match[2] + "/package.json");
 								const regExp = new RegExp(
-									"^(\\.\\/)?" + quoteMeta(match[3].slice(1)) + "(\\.d\\.ts)?$"
+									"^(\\.\\/)?" + quoteMeta(match[3].slice(1)) + "(\\.d\\.ts)?$",
 								);
 								const types = pkg.types || "index.d.ts";
 								if (regExp.test(types)) {
@@ -1121,7 +1121,7 @@ const printError = (diagnostic) => {
 			properties: toPropMap(
 				type.getProperties(),
 				type.getBaseTypes(),
-				symbolName
+				symbolName,
 			),
 			constructors: type.getConstructSignatures().map(parseSignature),
 			calls: type.getCallSignatures().map(parseSignature),
@@ -1331,8 +1331,8 @@ const printError = (diagnostic) => {
 			} else if (verbose) {
 				console.log(
 					`${checker.typeToString(
-						type
-					)} was a class in source code, but we are unable to generate a class for it.`
+						type,
+					)} was a class in source code, but we are unable to generate a class for it.`,
 				);
 			}
 		}
@@ -1419,7 +1419,7 @@ const printError = (diagnostic) => {
 					calls: flatten(interfaceSubtypes.map((p) => p.calls)),
 					constructors: flatten(interfaceSubtypes.map((p) => p.constructors)),
 					properties: new Map(
-						flatten(interfaceSubtypes.map((p) => p.properties))
+						flatten(interfaceSubtypes.map((p) => p.properties)),
 					),
 					documentation: interfaceSubtypes
 						.map((p) => p.documentation)
@@ -1462,7 +1462,7 @@ const printError = (diagnostic) => {
 			// heuristic: only referenced from other namespaces
 			if (
 				!Array.from(typeReferencedBy.get(type) || [], (t) =>
-					parsedCollectedTypes.get(t)
+					parsedCollectedTypes.get(t),
 				).every((p) => p.type === "namespace")
 			) {
 				continue;
@@ -1489,7 +1489,7 @@ const printError = (diagnostic) => {
 	const getSigHash = (prefix, signature, index) => {
 		const { args, returnType, typeParameters, documentation } = signature;
 		const typeParametersMap = new Map(
-			typeParameters && typeParameters.map((t, i) => [t, i])
+			typeParameters && typeParameters.map((t, i) => [t, i]),
 		);
 		return [
 			"args",
@@ -1500,7 +1500,7 @@ const printError = (diagnostic) => {
 					arg.spread,
 					arg.type,
 					arg.documentation,
-				])
+				]),
 			),
 			"return",
 			returnType,
@@ -1547,7 +1547,7 @@ const printError = (diagnostic) => {
 			case "intersection": {
 				const { symbolName, types, typeParameters } = parsed;
 				const typeParametersMap = new Map(
-					typeParameters && typeParameters.map((t, i) => [t, i])
+					typeParameters && typeParameters.map((t, i) => [t, i]),
 				);
 				return [
 					parsed.type,
@@ -1584,11 +1584,11 @@ const printError = (diagnostic) => {
 				const callHashes = calls.map(getSigHash.bind(null, "call"));
 				if (callHashes.some((x) => !x)) return undefined;
 				const constructorHashes = constructors.map(
-					getSigHash.bind(null, "constructor")
+					getSigHash.bind(null, "constructor"),
 				);
 				if (constructorHashes.some((x) => !x)) return undefined;
 				const typeParametersMap = new Map(
-					typeParameters && typeParameters.map((t, i) => [t, i])
+					typeParameters && typeParameters.map((t, i) => [t, i]),
 				);
 				return [
 					parsed.type,
@@ -1605,7 +1605,7 @@ const printError = (diagnostic) => {
 							name,
 							type,
 							optional,
-						])
+						]),
 					),
 					"numberIndex",
 					numberIndex,
@@ -1648,7 +1648,7 @@ const printError = (diagnostic) => {
 				if (otherParsed === parsed) continue;
 				if ("symbolName" in otherParsed && "symbolName" in parsed) {
 					const commonSymbolName = otherParsed.symbolName.filter((n) =>
-						parsed.symbolName.includes(n)
+						parsed.symbolName.includes(n),
 					);
 					otherParsed.symbolName = commonSymbolName;
 				}
@@ -1661,7 +1661,7 @@ const printError = (diagnostic) => {
 								target: otherType,
 								typeArguments: [],
 								typeArgumentsWithoutDefaults: [],
-						  }
+						  },
 				);
 				updates = true;
 			} else {
@@ -1745,7 +1745,9 @@ const printError = (diagnostic) => {
 			if (requeueOnConflict) {
 				if (verbose) {
 					console.log(
-						`Naming conflict: ${name} can't be used for ${symbolName.join(" ")}`
+						`Naming conflict: ${name} can't be used for ${symbolName.join(
+							" ",
+						)}`,
 					);
 				}
 				const item = nameToQueueEntry.get(name);
@@ -1799,7 +1801,9 @@ const printError = (diagnostic) => {
 	const queueDeclaration = (type, variable, fn) => {
 		if (!variable) {
 			throw new Error(
-				`variable missing for queueDeclaration of ${checker.typeToString(type)}`
+				`variable missing for queueDeclaration of ${checker.typeToString(
+					type,
+				)}`,
 			);
 		}
 		emitDeclarations.set(type, () => {
@@ -1827,7 +1831,7 @@ const printError = (diagnostic) => {
 			set.add(exportName === name ? name : `${exportName} as ${name}`);
 		} else {
 			importDeclarations.add(
-				`type ${name} = import(${JSON.stringify(from)}).${exportName};`
+				`type ${name} = import(${JSON.stringify(from)}).${exportName};`,
 			);
 		}
 	};
@@ -1894,24 +1898,24 @@ const printError = (diagnostic) => {
 			case "arrow":
 				return `${sigTypeArgs}${args} => ${getCode(
 					sig.returnType,
-					innerTypeArgs
+					innerTypeArgs,
 				)}`;
 			case "class-constructor":
 				return `constructor${args}`;
 			case "constructor":
 				return `new ${sigTypeArgs}${args}: ${getCode(
 					sig.returnType,
-					innerTypeArgs
+					innerTypeArgs,
 				)}`;
 			case "method":
 				return `${sigTypeArgs}${args}: ${getCode(
 					sig.returnType,
-					innerTypeArgs
+					innerTypeArgs,
 				)}`;
 			default:
 				return `${sigTypeArgs}${args}: ${getCode(
 					sig.returnType,
-					innerTypeArgs
+					innerTypeArgs,
 				)}`;
 		}
 	};
@@ -1929,8 +1933,8 @@ const printError = (diagnostic) => {
 				`${construct.documentation}${sigToString(
 					construct,
 					typeArgs,
-					parsed.type === "interface" ? "constructor" : "class-constructor"
-				)}`
+					parsed.type === "interface" ? "constructor" : "class-constructor",
+				)}`,
 			);
 		}
 		if (parsed.type === "interface") {
@@ -1945,12 +1949,44 @@ const printError = (diagnostic) => {
 			items.push(`[index: string]: ${getCode(parsed.stringIndex, typeArgs)}`);
 		}
 
+		const hasIteratorInBaseType = (type) => {
+			const parsed = parsedCollectedTypes.get(type);
+			if (!parsed || parsed.type !== "reference") return false;
+			const parsedTarget = parsedCollectedTypes.get(parsed.target);
+			return (
+				parsedTarget.type === "primitive" &&
+				[
+					"Array",
+					"Map",
+					"Set",
+					"String",
+					"Int8Array",
+					"Uint8Array",
+					"Uint8ClampedArray",
+					"Int16Array",
+					"Uint16Array",
+					"Int32Array",
+					"Uint32Array",
+					"Float32Array",
+					"Float64Array",
+				].includes(parsedTarget.name)
+			);
+		};
+
 		const handleProperties = (properties, prefix = "") => {
 			for (const [
 				name,
 				{ getter, type: propType, optional, readonly, method, documentation },
 			] of properties) {
 				if (method) {
+					if (
+						name === "[Symbol.iterator]" &&
+						parsed.type === "class" &&
+						parsed.baseType &&
+						hasIteratorInBaseType(parsed.baseType)
+					) {
+						continue;
+					}
 					let methodInfo = parsedCollectedTypes.get(propType);
 					while (
 						methodInfo.type === "reference" &&
@@ -1976,8 +2012,8 @@ const printError = (diagnostic) => {
 								`${Array.from(docs).join("")}${prefix}${name}${sigToString(
 									call,
 									typeArgs,
-									"method"
-								)}`
+									"method",
+								)}`,
 							);
 						}
 						continue;
@@ -1985,13 +2021,13 @@ const printError = (diagnostic) => {
 						console.log(
 							`Method ${name} has weird type ${getCode(propType, typeArgs)} (${
 								methodInfo.type
-							})`
+							})`,
 						);
 					}
 				}
 				const { code, optional: opt } = extractOptional(
 					getCode(propType, typeArgs),
-					optional
+					optional,
 				);
 				if (!getter) {
 					const p = prefix + (readonly ? "readonly " : "");
@@ -2052,7 +2088,7 @@ const printError = (diagnostic) => {
 			case "index": {
 				return `(${getCode(parsed.objectType, typeArgs)})[${getCode(
 					parsed.indexType,
-					typeArgs
+					typeArgs,
 				)}]`;
 			}
 			case "union":
@@ -2078,11 +2114,11 @@ const printError = (diagnostic) => {
 											.map((t) => getCode(t, new Set(), "in type args"))
 											.join(", ")}>`
 									: ""
-							} = ${code(new Set())};`
+							} = ${code(new Set())};`,
 					);
 					if (state !== "with type args" && parsed.typeParameters) {
 						return `${variable}<${parsed.typeParameters.map((t) =>
-							getCode(t, typeArgs)
+							getCode(t, typeArgs),
 						)}>`;
 					}
 					return `${variable}`;
@@ -2102,7 +2138,7 @@ const printError = (diagnostic) => {
 							.join(", ")}]`;
 					} else if (parsedTarget.name === "[...]") {
 						const items = parsed.typeArgumentsWithoutDefaults.map((t) =>
-							getCode(t, typeArgs)
+							getCode(t, typeArgs),
 						);
 						const last = items.pop();
 						return `[${items.join(", ")}, ...(${last})[]]`;
@@ -2112,14 +2148,14 @@ const printError = (diagnostic) => {
 					) {
 						return `(${getCode(
 							parsed.typeArgumentsWithoutDefaults[0],
-							typeArgs
+							typeArgs,
 						)})[]`;
 					}
 				}
 				return `${getCode(
 					parsed.target,
 					typeArgs,
-					"with type args"
+					"with type args",
 				)}<${parsed.typeArgumentsWithoutDefaults
 					.map((t) => getCode(t, typeArgs))
 					.join(", ")}>`;
@@ -2147,7 +2183,7 @@ const printError = (diagnostic) => {
 					});
 					if (state !== "with type args" && parsed.typeParameters) {
 						return `${variable}<${parsed.typeParameters.map((t) =>
-							getCode(t, typeArgs)
+							getCode(t, typeArgs),
 						)}>`;
 					}
 					return `${variable}`;
@@ -2188,7 +2224,7 @@ const printError = (diagnostic) => {
 				}
 				if (state !== "with type args" && parsed.typeParameters) {
 					return `${variable}<${parsed.typeParameters.map((t) =>
-						getCode(t, typeArgs)
+						getCode(t, typeArgs),
 					)}>`;
 				}
 				return `${variable}`;
@@ -2205,25 +2241,25 @@ const printError = (diagnostic) => {
 						const code = getCode(
 							exportedType,
 							new Set(),
-							`in namespace ${name}`
+							`in namespace ${name}`,
 						);
 						if (code.startsWith("export ")) {
 							declarations.push(code);
 						} else if (/^typeof [A-Za-z_0-9]+$/.test(code)) {
 							const exportName = code.slice(`typeof `.length);
 							exports.push(
-								exportName === name ? name : `${exportName} as ${name}`
+								exportName === name ? name : `${exportName} as ${name}`,
 							);
 						} else if (name === "default") {
 							declarations.push(
-								`${readonly || getter ? "const" : "let"} _default: ${code};\n`
+								`${readonly || getter ? "const" : "let"} _default: ${code};\n`,
 							);
 							exports.push(`_default as default`);
 						} else {
 							declarations.push(
 								`export ${
 									readonly || getter ? "const" : "let"
-								} ${name}: ${code};\n`
+								} ${name}: ${code};\n`,
 							);
 						}
 					}
@@ -2236,7 +2272,7 @@ const printError = (diagnostic) => {
 								exports.push(
 									codeWithoutTemplateArgs === name
 										? name
-										: `${codeWithoutTemplateArgs} as ${name}`
+										: `${codeWithoutTemplateArgs} as ${name}`,
 								);
 							} else {
 								declarations.push(`export type ${name} = ${code};\n`);
@@ -2251,8 +2287,8 @@ const printError = (diagnostic) => {
 								} function ${variable}${sigToString(
 									call,
 									new Set(),
-									"method"
-								)};\n`
+									"method",
+								)};\n`,
 						)
 						.join("")}${
 						exportNamespace ? "export" : "declare"
@@ -2272,7 +2308,7 @@ const printError = (diagnostic) => {
 				queueDeclaration(
 					type,
 					variable,
-					() => `declare const ${variable}: unique symbol;`
+					() => `declare const ${variable}: unique symbol;`,
 				);
 				return `typeof ${variable}`;
 			}
@@ -2310,7 +2346,7 @@ const printError = (diagnostic) => {
 		const tempName = findName(
 			(parsed && "symbolName" in parsed && parsed.symbolName) || [
 				codeGenerationContext + "AnonymousCircularType",
-			]
+			],
 		);
 		typeToCode.set(tuple, tempName);
 		unusedTempNames.add(tuple);
@@ -2364,7 +2400,7 @@ const printError = (diagnostic) => {
 				(from) =>
 					`import { ${[...imports.get(from)]
 						.sort()
-						.join(", ")} } from ${JSON.stringify(from)}`
+						.join(", ")} } from ${JSON.stringify(from)}`,
 			),
 		...[...importDeclarations].sort(),
 		"",

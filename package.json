@@ -8,8 +8,11 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "pretty-lint-base": "node node_modules/prettier/bin/prettier.cjs --cache --ignore-unknown .",
+    "pretty-lint-fix": "yarn pretty-lint-base --log-level warn --write",
+    "pretty-lint": "yarn pretty-lint-base --check",
     "test": "yarn lint",
-    "lint": "yarn special-lint && tsc",
+    "lint": "yarn special-lint && yarn pretty-lint && tsc",
     "special-lint": "node lockfile-lint"
   },
   "peerDependencies": {
@@ -17,10 +20,10 @@
     "typescript": "*"
   },
   "devDependencies": {
-    "@types/node": "^14.14.14",
+    "@types/node": "^22.5.4",
     "@types/yargs": "^15.0.12",
     "prettier": "^3.0.1",
-    "typescript": "^5.4.2"
+    "typescript": "^5.6.2"
   },
   "dependencies": {
     "@yarnpkg/lockfile": "^1.1.0",
@@ -28,7 +31,7 @@
     "commondir": "^1.0.1",
     "glob": "^7.1.6",
     "json-schema-to-typescript": "^9.1.1",
-    "terser": "^5.6.1",
+    "terser": "^5.32.0",
     "yargs": "^16.1.1"
   }
 }

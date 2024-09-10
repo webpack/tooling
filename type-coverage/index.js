@@ -55,12 +55,10 @@ for (const sourceFile of program.getSourceFiles()) {
 				if (type) {
 					const { line, character } = ts.getLineAndCharacterOfPosition(
 						sourceFile,
-						node.getStart()
+						node.getStart(),
 					);
-					const {
-						line: lineEnd,
-						character: characterEnd,
-					} = ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
+					const { line: lineEnd, character: characterEnd } =
+						ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
 					const typeText = typeChecker.typeToString(type);
 					let isExternal = false;
 
@@ -77,7 +75,7 @@ for (const sourceFile of program.getSourceFiles()) {
 					};
 					if (node.parent && ts.isPropertyAccessExpression(node.parent)) {
 						const expressionType = typeChecker.getTypeAtLocation(
-							node.parent.expression
+							node.parent.expression,
 						);
 						checkDecls(expressionType);
 					}
@@ -112,5 +110,5 @@ fs.mkdirSync(outputDirectory, { recursive: true });
 fs.writeFileSync(
 	path.resolve(outputDirectory, "coverage-types.json"),
 	JSON.stringify(coverageReport),
-	"utf-8"
+	"utf-8",
 );

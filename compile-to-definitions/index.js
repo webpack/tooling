@@ -30,14 +30,14 @@ const makeDefinitionsForSchema = async (absSchemaPath, schemasDir) => {
 	const filename = path.resolve(
 		root,
 		outputFolder,
-		`${path.join(directory, basename)}.d.ts`
+		`${path.join(directory, basename)}.d.ts`,
 	);
 	const schema = JSON.parse(fs.readFileSync(absSchemaPath, "utf-8"));
 	const keys = Object.keys(schema);
 	if (keys.length === 1 && keys[0] === "$ref") return;
 
 	const prettierConfig = await prettier.resolveConfig(
-		path.resolve(root, outputFolder, "result.d.ts")
+		path.resolve(root, outputFolder, "result.d.ts"),
 	);
 	const style = {
 		printWidth: prettierConfig.printWidth,
@@ -56,7 +56,7 @@ const makeDefinitionsForSchema = async (absSchemaPath, schemasDir) => {
 		(ts) => {
 			ts = ts.replace(
 				/\s+\*\s+\* This interface was referenced by `.+`'s JSON-Schema\s+\* via the `definition` ".+"\./g,
-				""
+				"",
 			);
 			let normalizedContent = "";
 			try {
@@ -70,14 +70,14 @@ const makeDefinitionsForSchema = async (absSchemaPath, schemasDir) => {
 					fs.mkdirSync(path.dirname(filename), { recursive: true });
 					fs.writeFileSync(filename, ts, "utf-8");
 					console.error(
-						`declarations/${relPath.replace(/\\/g, "/")}.d.ts updated`
+						`declarations/${relPath.replace(/\\/g, "/")}.d.ts updated`,
 					);
 				} else {
 					console.error(
 						`declarations/${relPath.replace(
 							/\\/g,
-							"/"
-						)}.d.ts need to be updated`
+							"/",
+						)}.d.ts need to be updated`,
 					);
 					process.exitCode = 1;
 				}
@@ -86,7 +86,7 @@ const makeDefinitionsForSchema = async (absSchemaPath, schemasDir) => {
 		(err) => {
 			console.error(err);
 			process.exitCode = 1;
-		}
+		},
 	);
 };
 
@@ -113,7 +113,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 				const result = resolvePath(root, property.$ref);
 				if (!result) {
 					throw new Error(
-						`Unable to resolve "$ref": "${property.$ref}" in ${path.join("/")}`
+						`Unable to resolve "$ref": "${property.$ref}" in ${path.join("/")}`,
 					);
 				}
 				schema.properties[key] = {
@@ -167,7 +167,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 			implementedNames.push(/\/([^\/]+)$/.exec(impl)[1]);
 		}
 		const propEntries = Object.entries(schema.properties).filter(
-			([name]) => !implementedProps.has(name)
+			([name]) => !implementedProps.has(name),
 		);
 		if (propEntries.length > 0) {
 			const key =

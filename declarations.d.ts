@@ -1,12 +1,12 @@
 import * as ts from "typescript";
 declare module "typescript" {
 	export function getDeclarationModifierFlagsFromSymbol(
-		s: ts.Symbol
+		s: ts.Symbol,
 	): ts.ModifierFlags;
 	export function signatureHasRestParameter(signature: ts.Signature): boolean;
 	interface Symbol {
 		type?: ts.Type;
-		parent: Symbol | undefined
+		parent: Symbol | undefined;
 	}
 	interface Declaration {
 		expression?: ts.Expression;
