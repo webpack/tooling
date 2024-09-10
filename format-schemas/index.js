@@ -12,12 +12,12 @@ const minSlashes = schemas
 	.map((p) => p.split(/[\\/]/).length)
 	.reduce((a, b) => Math.min(a, b), Infinity);
 const baseSchemaPaths = schemas.filter(
-	(p) => p.split(/[\\/]/).length === minSlashes
+	(p) => p.split(/[\\/]/).length === minSlashes,
 );
 const baseDefinitions = new Map();
 for (const baseSchemaPath of baseSchemaPaths) {
 	for (const [name, schema] of Object.entries(
-		require(baseSchemaPath).definitions
+		require(baseSchemaPath).definitions,
 	)) {
 		baseDefinitions.set(name, schema);
 	}
@@ -131,7 +131,7 @@ const processJson = processSchema.bind(null, {
 										...json,
 										tsType: tsType.replace(
 											/\.\.\//g,
-											context.importPrefix + "../"
+											context.importPrefix + "../",
 										),
 									};
 								}
@@ -139,7 +139,7 @@ const processJson = processSchema.bind(null, {
 							},
 						},
 						baseDef,
-						{}
+						{},
 					);
 					json.definitions[key] = baseDef;
 				}
@@ -151,7 +151,7 @@ const processJson = processSchema.bind(null, {
 			for (const impl of [].concat(json.implements)) {
 				if (!impl.startsWith(prefix)) {
 					console.warn(
-						`"implements": "${impl}" -> should start with "${prefix}"`
+						`"implements": "${impl}" -> should start with "${prefix}"`,
 					);
 					continue;
 				}
@@ -159,13 +159,13 @@ const processJson = processSchema.bind(null, {
 				const referencedSchema = context.definitions[name];
 				if (!referencedSchema) {
 					console.warn(
-						`"implements": "${impl}" -> referenced schema not found`
+						`"implements": "${impl}" -> referenced schema not found`,
 					);
 					continue;
 				}
 				if (typeof referencedSchema.properties !== "object") {
 					console.warn(
-						`"implements": "${impl}" -> referenced schema has no properties`
+						`"implements": "${impl}" -> referenced schema has no properties`,
 					);
 					continue;
 				}

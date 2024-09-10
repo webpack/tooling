@@ -45,7 +45,8 @@ const execToArray = (content, regexp) => {
 const schema = [
 	{
 		title: "license comment",
-		regexp: /\/\*\n\s*MIT License http:\/\/www\.opensource\.org\/licenses\/mit-license\.php\n\s*(?:(Authors? .+)\n)?\s*\*\/\n/g,
+		regexp:
+			/\/\*\n\s*MIT License http:\/\/www\.opensource\.org\/licenses\/mit-license\.php\n\s*(?:(Authors? .+)\n)?\s*\*\/\n/g,
 		updateMessage: "update the license comment",
 		update(content, author) {
 			return (
@@ -82,12 +83,13 @@ const schema = [
 	},
 	{
 		title: "imports",
-		regexp: /(const (\{\s+\w+(?::\s+\w+)?(,\s+\w+(?::\s+\w+)?)*\s+\}|\w+) = (\/\*\* @type \{TODO\} \*\/\s\()?require\("[^"]+"\)\)?(\.\w+)*;\n)+\n/g,
+		regexp:
+			/(const (\{\s+\w+(?::\s+\w+)?(,\s+\w+(?::\s+\w+)?)*\s+\}|\w+) = (\/\*\* @type \{TODO\} \*\/\s\()?require\("[^"]+"\)\)?(\.\w+)*;\n)+\n/g,
 		updateMessage: "sort imports alphabetically",
 		update(content) {
 			const items = execToArray(
 				content,
-				/const (?:\{\s+\w+(?::\s+\w+)?(?:,\s+\w+(?::\s+\w+)?)*\s+\}|\w+) = (?:\/\*\* @type \{TODO\} \*\/\s\()?require\("([^"]+)"\)\)?((?:\.\w+)*);\n/g
+				/const (?:\{\s+\w+(?::\s+\w+)?(?:,\s+\w+(?::\s+\w+)?)*\s+\}|\w+) = (?:\/\*\* @type \{TODO\} \*\/\s\()?require\("([^"]+)"\)\)?((?:\.\w+)*);\n/g,
 			);
 			items.sort(sortImport);
 			return items.map((item) => item.content).join("") + "\n";
@@ -97,12 +99,13 @@ const schema = [
 	},
 	{
 		title: "type imports",
-		regexp: /(\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("[^"]+"\)(\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n)+\n/g,
+		regexp:
+			/(\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("[^"]+"\)(\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n)+\n/g,
 		updateMessage: "sort type imports alphabetically",
 		update(content) {
 			const items = execToArray(
 				content,
-				/\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("([^"]+)"\)((?:\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?)\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n/g
+				/\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("([^"]+)"\)((?:\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?)\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n/g,
 			);
 			items.sort(sortImport);
 			return items.map((item) => item.content).join("") + "\n";
@@ -139,7 +142,7 @@ for (const filePath of allFiles) {
 		}
 		if (match.index !== pos) {
 			console.log(
-				`${filePath}: Unexpected code at ${pos}-${match.index}, expected ${current.title}`
+				`${filePath}: Unexpected code at ${pos}-${match.index}, expected ${current.title}`,
 			);
 			process.exitCode = 1;
 			pos = match.index;
@@ -181,12 +184,12 @@ for (const filePath of allFiles) {
 	}
 
 	const matches = content.match(
-		/makeSerializable\(\s*[^,]+,\s*"webpack\/lib\/[^"]+"\s*(?:,[^)]+)?\)/g
+		/makeSerializable\(\s*[^,]+,\s*"webpack\/lib\/[^"]+"\s*(?:,[^)]+)?\)/g,
 	);
 	if (matches) {
 		for (const match of matches) {
 			const str = /makeSerializable\(\s*[^,]+,\s*"webpack\/lib\/([^"]+)"/.exec(
-				match
+				match,
 			)[1];
 			allSerializables.add(str);
 		}
@@ -195,13 +198,13 @@ for (const filePath of allFiles) {
 
 // Check if internalSerializables.js includes all serializables in webpack
 for (const internalSerializables of allFiles.filter((file) =>
-	file.includes("internalSerializables")
+	file.includes("internalSerializables"),
 )) {
 	const content = fs.readFileSync(internalSerializables);
 	for (const serializable of allSerializables) {
 		if (!content.includes(`"../${serializable}"`)) {
 			console.log(
-				`${internalSerializables}: must include static require to ../${serializable}`
+				`${internalSerializables}: must include static require to ../${serializable}`,
 			);
 			process.exitCode = 1;
 		}

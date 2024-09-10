@@ -8,8 +8,11 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "pretty-lint-base": "node node_modules/prettier/bin/prettier.cjs --cache --ignore-unknown .",
+    "pretty-lint-fix": "yarn pretty-lint-base --log-level warn --write",
+    "pretty-lint": "yarn pretty-lint-base --check",
     "test": "yarn lint",
-    "lint": "yarn special-lint && tsc",
+    "lint": "yarn special-lint && yarn pretty-lint && tsc",
     "special-lint": "node lockfile-lint"
   },
   "peerDependencies": {

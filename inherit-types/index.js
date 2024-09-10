@@ -74,7 +74,7 @@ for (const sourceFile of program.getSourceFiles()) {
 					) {
 						const baseDecl = findDeclarationInBaseClass(
 							node,
-							member.name.getText()
+							member.name.getText(),
 						);
 						if (baseDecl) {
 							const memberAsAny = /** @type {any} */ (member);
@@ -88,7 +88,7 @@ for (const sourceFile of program.getSourceFiles()) {
 							if (baseJsDocText) {
 								baseJsDocText = baseJsDocText.replace(
 									/\t \* @abstract\r?\n/g,
-									""
+									"",
 								);
 								if (!currentJsDocText) {
 									// add js doc
@@ -145,7 +145,7 @@ for (const sourceFile of program.getSourceFiles()) {
 				console.log(file);
 				for (const update of updates) {
 					console.log(
-						`* ${update.member} should have this JSDoc:\n\t${update.content}`
+						`* ${update.member} should have this JSDoc:\n\t${update.content}`,
 					);
 					if (update.oldContent) {
 						console.log(`instead of\n\t${update.oldContent}`);

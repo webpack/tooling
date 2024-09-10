@@ -49,7 +49,7 @@ for (const filename of schemas) {
 			"instanceof",
 			"tsType",
 			"not",
-			"link"
+			"link",
 		];
 
 		const isReference = (schema) => {
@@ -71,7 +71,7 @@ for (const filename of schemas) {
 				process.exitCode = 1;
 			} else if (!/^[A-Z`].*[^\.]\.$/.test(property.description)) {
 				console.log(
-					`${path}.description should start with an uppercase letter and end with a single dot.`
+					`${path}.description should start with an uppercase letter and end with a single dot.`,
 				);
 				process.exitCode = 1;
 			}
@@ -79,13 +79,13 @@ for (const filename of schemas) {
 
 		const walker = (path, item) => {
 			const otherProperties = Object.keys(item).filter(
-				(p) => allowedProperties.indexOf(p) < 0
+				(p) => allowedProperties.indexOf(p) < 0,
 			);
 			if (otherProperties.length > 0) {
 				console.log(
 					`${path} should not have the ${
 						otherProperties.length > 1 ? "properties" : "property"
-					} ${otherProperties.join(", ")}`
+					} ${otherProperties.join(", ")}`,
 				);
 				process.exitCode = 1;
 				// When allowing more properties make sure to add nice error messages for them in WebpackOptionsValidationError
@@ -96,8 +96,8 @@ for (const filename of schemas) {
 				if (otherProperties.length > 0) {
 					console.log(
 						`When using $ref not other properties are possible (${otherProperties.join(
-							", "
-						)})`
+							", ",
+						)})`,
 					);
 					process.exitCode = 1;
 				}
@@ -120,7 +120,7 @@ for (const filename of schemas) {
 			if ("absolutePath" in item) {
 				if (item.type !== "string") {
 					console.log(
-						`${path}: When using absolutePath, type must be 'string'`
+						`${path}: When using absolutePath, type must be 'string'`,
 					);
 					process.exitCode = 1;
 				}
@@ -129,7 +129,7 @@ for (const filename of schemas) {
 			if ("properties" in item || "additionalProperties" in item) {
 				if (item.type !== "object") {
 					console.log(
-						`${path}: When using properties or additionalProperties, type must be 'object'`
+						`${path}: When using properties or additionalProperties, type must be 'object'`,
 					);
 					process.exitCode = 1;
 				}
@@ -172,7 +172,7 @@ for (const filename of schemas) {
 			if ("properties" in item) {
 				if (item.additionalProperties === undefined) {
 					console.log(
-						`${path} should have additionalProperties set to some value when describing properties`
+						`${path} should have additionalProperties set to some value when describing properties`,
 					);
 					process.exitCode = 1;
 				}
@@ -185,7 +185,7 @@ for (const filename of schemas) {
 			if (typeof item.additionalProperties === "object") {
 				validateProperty(
 					`${path}.additionalProperties`,
-					item.additionalProperties
+					item.additionalProperties,
 				);
 				walker(`${path}.additionalProperties`, item.additionalProperties);
 			}

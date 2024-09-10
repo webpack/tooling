@@ -43,7 +43,7 @@ ajv.addKeyword({
 	code(ctx) {
 		const { data, schema } = ctx;
 		ctx.fail(
-			_`${data}.includes("!") || (absolutePathRegExp.test(${data}) !== ${schema})`
+			_`${data}.includes("!") || (absolutePathRegExp.test(${data}) !== ${schema})`,
 		);
 	},
 });
@@ -84,8 +84,8 @@ ajv.addKeyword({
 					`Schema precompilation only supports primitive values in enum: ${JSON.stringify(
 						item,
 						null,
-						2
-					)}`
+						2,
+					)}`,
 				);
 			}
 		}
@@ -99,7 +99,7 @@ ajv.addKeyword({
 
 					return _`${data} !== ${x}`;
 				})
-				.reduce((a, b) => _`${a} && ${b}`)
+				.reduce((a, b) => _`${a} && ${b}`),
 		);
 	},
 });
@@ -163,7 +163,7 @@ const createDeclaration = (schemaPath, title, schemasDir) => {
 	const filename = path.resolve(
 		root,
 		declarations,
-		`${path.join(directory, basename)}`
+		`${path.join(directory, basename)}`,
 	);
 	const fromSchemaToDeclaration = path
 		.relative(path.dirname(schemaPath), filename)
@@ -213,12 +213,12 @@ const precompileSchema = async (schemaPath, schemasDir) => {
 		const precompiledSchemaPath = schemaPath.replace(/\.json$/, ".check.js");
 		const precompiledSchemaDeclarationPath = schemaPath.replace(
 			/\.json$/,
-			".check.d.ts"
+			".check.d.ts",
 		);
 		updateFile(precompiledSchemaPath, code);
 		updateFile(
 			precompiledSchemaDeclarationPath,
-			createDeclaration(schemaPath, title, schemasDir)
+			createDeclaration(schemaPath, title, schemasDir),
 		);
 	} catch (e) {
 		e.message += "\nduring precompilation of " + schemaPath;
