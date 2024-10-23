@@ -44,6 +44,10 @@ const execToArray = (content, regexp) => {
 /** @type {Schema[]} */
 const schema = [
 	{
+		title: "ts-ignore",
+		regexp: /(\/\/ @ts-nocheck\n)?/g,
+	},
+	{
 		title: "license comment",
 		regexp:
 			/\/\*\n\s*MIT License http:\/\/www\.opensource\.org\/licenses\/mit-license\.php\n\s*(?:(Authors? .+)\n)?\s*\*\/\n/g,
