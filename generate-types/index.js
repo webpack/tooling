@@ -2049,6 +2049,31 @@ const printError = (diagnostic) => {
 		return items;
 	};
 
+	// TODO remove me when minimum supported typescript version will be 5.7
+	const isArrayBufferLike = (name) => {
+		if (
+			[
+				"Uint8Array",
+				"Uint8ClampedArray",
+				"Uint16Array",
+				"Uint32Array",
+				"Int8Array",
+				"Int16Array",
+				"Int32Array",
+				"BigUint64Array",
+				"BigInt64Array",
+				"Float32Array",
+				"Float64Array",
+				"DataView",
+				"Buffer",
+			].includes(name)
+		) {
+			return true;
+		}
+
+		return false;
+	};
+
 	/**
 	 * @param {ts.Type} type the type
 	 * @param {Set<ts.Type>} typeArgs type args specified in context
@@ -2152,13 +2177,20 @@ const printError = (diagnostic) => {
 						)})[]`;
 					}
 				}
+
+				const symbol = type.getSymbol();
+				const typeArgumentsWithoutDefaults =
+					symbol && isArrayBufferLike(getFullEscapedName(symbol))
+						? ""
+						: `<${parsed.typeArgumentsWithoutDefaults
+								.map((t) => getCode(t, typeArgs))
+								.join(", ")}>`;
+
 				return `${getCode(
 					parsed.target,
 					typeArgs,
 					"with type args",
-				)}<${parsed.typeArgumentsWithoutDefaults
-					.map((t) => getCode(t, typeArgs))
-					.join(", ")}>`;
+				)}${typeArgumentsWithoutDefaults}`;
 			}
 			case "interface": {
 				const variable = typeToVariable.get(type);
