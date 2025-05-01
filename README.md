@@ -19,19 +19,19 @@ Add two scripts to the package.json:
 
 ```json
 "scripts": {
-    "special-lint": "...",
-    "special-lint-fix": "..."
+    "lint:special": "...",
+    "fix:special": "..."
 }
 ```
 
-Add all tooling that should be used to these scripts (concatenated with `&&`). In the `special-lint-fix` version pass `--write` to all tooling.
+Add all tooling that should be used to these scripts (concatenated with `&&`). In the `fix:special` version pass `--write` to all tooling.
 
 Example:
 
 ```json
 "scripts": {
-    "special-lint": "node node_modules/tooling/compile-to-definitions",
-    "special-lint-fix": "node node_modules/tooling/compile-to-definitions --write"
+    "lint:special": "node node_modules/tooling/compile-to-definitions",
+    "fix:special": "node node_modules/tooling/compile-to-definitions --write"
 }
 ```
 
