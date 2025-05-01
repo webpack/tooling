@@ -2423,7 +2423,7 @@ const printError = (diagnostic) => {
 		"/*",
 		" * This file was automatically generated.",
 		" * DO NOT MODIFY BY HAND.",
-		" * Run `yarn special-lint-fix` to update",
+		" * Run `yarn fix:special` to update",
 		" */",
 		"",
 		...[...imports.keys()]
@@ -2469,7 +2469,7 @@ const printError = (diagnostic) => {
 		} else {
 			exitCode = 1;
 			console.error("types.d.ts need to be updated.");
-			console.error("run 'yarn special-lint-fix' to update.");
+			console.error("run 'yarn fix:special' to update.");
 		}
 	}
 
