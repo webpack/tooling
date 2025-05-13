@@ -10,6 +10,14 @@ const doWrite = process.argv.includes("--write");
 const typeChecker = program.getTypeChecker();
 
 /**
+ * @param {ts.MethodDeclaration} decl
+ * @returns {boolean} true if the method is static
+ */
+const isStaticMethod = (decl) => {
+	return !!(ts.getCombinedModifierFlags(decl) & ts.ModifierFlags.Static);
+};
+
+/**
  * @param {ts.ClassDeclaration | ts.ClassExpression} node the class declaration
  * @returns {Set<ts.ClassDeclaration | ts.ClassExpression>} the base class declarations
  */
@@ -44,7 +52,7 @@ const getBaseClasses = (node) => {
 const findDeclarationInBaseClass = (classNode, memberName) => {
 	for (const baseClass of getBaseClasses(classNode)) {
 		for (const node of baseClass.members) {
-			if (ts.isMethodDeclaration(node)) {
+			if (ts.isMethodDeclaration(node) && !isStaticMethod(node)) {
 				if (node.name.getText() === memberName) {
 					return node;
 				}
@@ -68,10 +76,7 @@ for (const sourceFile of program.getSourceFiles()) {
 		const nodeHandler = (node) => {
 			if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
 				for (const member of node.members) {
-					if (
-						ts.isMethodDeclaration(member) &&
-						!(ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static)
-					) {
+					if (ts.isMethodDeclaration(member) && !isStaticMethod(member)) {
 						const baseDecl = findDeclarationInBaseClass(
 							node,
 							member.name.getText(),
