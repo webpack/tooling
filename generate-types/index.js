@@ -2063,6 +2063,7 @@ const printError = (diagnostic) => {
 				"Int32Array",
 				"BigUint64Array",
 				"BigInt64Array",
+				"Float16Array",
 				"Float32Array",
 				"Float64Array",
 				"DataView",
