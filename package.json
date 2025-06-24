@@ -1,6 +1,6 @@
 {
   "name": "tooling",
-  "version": "1.23.12",
+  "version": "1.24.0",
   "description": "A collection of reusable tooling for webpack repos.",
   "main": "index.js",
   "repository": "https://github.com/webpack/tooling",
