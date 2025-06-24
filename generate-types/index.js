@@ -203,7 +203,12 @@ const printError = (diagnostic) => {
 	const rootPath = path.resolve(root);
 
 	const ownConfigPath = path.resolve(rootPath, "generate-types-config.js");
-	const options = { nameMapping: {}, exclude: [], include: [] };
+	const options = {
+		nameMapping: {},
+		typeMapping: [],
+		exclude: [],
+		include: [],
+	};
 	try {
 		Object.assign(options, require(ownConfigPath));
 	} catch (e) {
@@ -718,6 +723,8 @@ const printError = (diagnostic) => {
 		return program.getSourceFile(rootPath + "/" + match[1] + "/" + types);
 	};
 
+	const { typeMapping } = options;
+
 	/**
 	 * @param {ts.Type} type type
 	 * @returns {ParsedType | undefined} parsed type
@@ -762,6 +769,33 @@ const printError = (diagnostic) => {
 				} else if (!/^[_a-zA-Z$][_a-zA-Z$0-9]*$/.test(name)) {
 					name = JSON.stringify(name);
 				}
+
+				let needContinue = false;
+
+				for (const [regExp, newName] of Object.entries(typeMapping)) {
+					if (new RegExp(regExp).test(nameForFilter)) {
+						const newType = checker.getESSymbolType();
+						/** @type {ts.LiteralType} */
+						(newType).intrinsicName = newName;
+						properties.set(name, {
+							type: newType,
+							method: (flags & ts.SymbolFlags.Method) !== 0,
+							optional: (flags & ts.SymbolFlags.Optional) !== 0,
+							readonly: (modifierFlags & ts.ModifierFlags.Readonly) !== 0,
+							getter:
+								(flags & ts.SymbolFlags.GetAccessor) !== 0 &&
+								(flags & ts.SymbolFlags.SetAccessor) === 0,
+							documentation: getDocumentation(prop),
+						});
+						needContinue = true;
+						break;
+					}
+				}
+
+				if (needContinue) {
+					continue;
+				}
+
 				properties.set(name, {
 					type: innerType,
 					method: (flags & ts.SymbolFlags.Method) !== 0,
@@ -1203,7 +1237,7 @@ const printError = (diagnostic) => {
 					captureType(type, prop);
 				}
 				for (const prop of parsed.properties.values()) {
-					captureType(type, prop.type);
+					captureType(type, /** @type {ts.Type} */ (prop.type));
 				}
 				for (const call of parsed.calls) {
 					for (const arg of call.args) {
@@ -2273,7 +2307,8 @@ const printError = (diagnostic) => {
 						{ type: exportedType, optional, readonly, getter, method },
 					] of parsed.exports) {
 						const code = getCode(
-							exportedType,
+							/** @type {ts.Type} */
+							(exportedType),
 							new Set(),
 							`in namespace ${name}`,
 						);
