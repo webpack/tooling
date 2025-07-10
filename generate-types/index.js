@@ -841,6 +841,13 @@ const printError = (diagnostic) => {
 		/** @type {ts.TypeNode} */
 		let typeNode = /** @type {any} */ (type)._typeNode;
 		if (type.aliasSymbol) {
+			const fullEscapedName = getFullEscapedName(type.aliasSymbol);
+			if (fullEscapedName.includes("NodeJS.")) {
+				return {
+					type: "primitive",
+					name: fullEscapedName,
+				};
+			}
 			const aliasType = checker.getDeclaredTypeOfSymbol(type.aliasSymbol);
 			if (aliasType && aliasType !== type) {
 				const typeArguments = type.aliasTypeArguments || [];
