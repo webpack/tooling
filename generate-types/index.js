@@ -917,10 +917,42 @@ const printError = (diagnostic) => {
 		}
 
 		if (type.isUnion()) {
+			let types = type.types;
+
+			const origin =
+				/** @type {ts.UnionType & { origin: ts.UnionType } | undefined} */
+				(type).origin;
+			const nodeJSOriginTypes =
+				origin &&
+				origin.types &&
+				origin.types.filter((item) => {
+					if (!item.aliasSymbol) {
+						return false;
+					}
+
+					const fullEscapedName = getFullEscapedName(item.aliasSymbol);
+
+					if (fullEscapedName.includes("NodeJS.")) {
+						return true;
+					}
+				});
+
+			if (nodeJSOriginTypes && nodeJSOriginTypes.length > 0) {
+				types = types.filter((item) => {
+					if (!item.symbol) {
+						return true;
+					}
+
+					return !isArrayBufferLike(getFullEscapedName(item.symbol));
+				});
+
+				types.push(...nodeJSOriginTypes);
+			}
+
 			return {
 				type: "union",
 				symbolName: parseName(type),
-				types: type.types,
+				types,
 				typeParameters:
 					type.aliasTypeArguments && type.aliasTypeArguments.length > 0
 						? type.aliasTypeArguments
