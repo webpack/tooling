@@ -725,6 +725,25 @@ const printError = (diagnostic) => {
 
 	const { typeMapping } = options;
 
+	const isArrayBufferLike = (name) => {
+		return [
+			"Uint8Array",
+			"Uint8ClampedArray",
+			"Uint16Array",
+			"Uint32Array",
+			"Int8Array",
+			"Int16Array",
+			"Int32Array",
+			"BigUint64Array",
+			"BigInt64Array",
+			"Float16Array",
+			"Float32Array",
+			"Float64Array",
+			"DataView",
+			"Buffer",
+		].includes(name);
+	};
+
 	/**
 	 * @param {ts.Type} type type
 	 * @returns {ParsedType | undefined} parsed type
@@ -2121,32 +2140,6 @@ const printError = (diagnostic) => {
 			handleProperties(parsed.staticProperties, "static ");
 		}
 		return items;
-	};
-
-	// TODO remove me when minimum supported typescript version will be 5.7
-	const isArrayBufferLike = (name) => {
-		if (
-			[
-				"Uint8Array",
-				"Uint8ClampedArray",
-				"Uint16Array",
-				"Uint32Array",
-				"Int8Array",
-				"Int16Array",
-				"Int32Array",
-				"BigUint64Array",
-				"BigInt64Array",
-				"Float16Array",
-				"Float32Array",
-				"Float64Array",
-				"DataView",
-				"Buffer",
-			].includes(name)
-		) {
-			return true;
-		}
-
-		return false;
 	};
 
 	/**
