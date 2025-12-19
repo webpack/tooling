@@ -1915,6 +1915,7 @@ const printError = (diagnostic) => {
 	 * @returns {void}
 	 */
 	const addImport = (exportName, name, from) => {
+		if (from.startsWith("node:")) from = from.slice(5);
 		if (!exportName.includes(".")) {
 			let set = imports.get(from);
 			if (set === undefined) {
