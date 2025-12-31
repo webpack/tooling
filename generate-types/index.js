@@ -26,6 +26,7 @@ const toIdentifier = (str) => {
 		.replace(IDENTIFIER_ALPHA_NUMERIC_NAME_REPLACE_REGEX, "_");
 };
 
+/** @param {string[]} list */
 const joinIdentifer = (list) => {
 	const str = list.join("_");
 	return str.replace(/([^_])_+(.|$)/g, (m, a, b) =>
@@ -1820,6 +1821,7 @@ const printError = (diagnostic) => {
 	const { nameMapping } = options;
 
 	const nameToQueueEntry = new Map();
+	/** @param symbolName {SymbolName} */
 	const findName = (symbolName, requeueOnConflict = false) => {
 		const key = symbolName.join(" ");
 		for (const wishedName of Object.keys(nameMapping)) {
@@ -1827,6 +1829,7 @@ const printError = (diagnostic) => {
 				symbolName = [wishedName, ...symbolName];
 			}
 		}
+		/** @type {string} */
 		let name;
 		for (let i = 1; i <= symbolName.length; i++) {
 			name = joinIdentifer(symbolName.slice(0, i));
@@ -1855,6 +1858,7 @@ const printError = (diagnostic) => {
 		return `${name}_${i}`;
 	};
 
+	/** @type {Map<ts.Type, string>} */
 	const typeToVariable = new Map();
 	for (const entry of needName) {
 		const [type, item] = entry;
@@ -1890,6 +1894,12 @@ const printError = (diagnostic) => {
 		declarationKeys.set(text, key);
 	};
 
+	/**
+	 * @param {ts.Type} type
+	 * @param {string} variable
+	 * @param {() => string} fn
+	 * @returns {void}
+	 */
 	const queueDeclaration = (type, variable, fn) => {
 		if (!variable) {
 			throw new Error(
