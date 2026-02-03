@@ -166,11 +166,12 @@ for (const sourceFile of program.getSourceFiles()) {
 				const isTyped =
 					// Ignore labeled statements
 					((ts.isLabeledStatement(node.parent) ||
-							ts.isBreakStatement(node.parent) ||
-							ts.isContinueStatement(node.parent)) &&
+						ts.isBreakStatement(node.parent) ||
+						ts.isContinueStatement(node.parent)) &&
 						node.parent.label === node) ||
 					// Ignore `name` in `const { name: otherName } = obj;`
-					(ts.isBindingElement(node.parent) && node.parent.propertyName === node) ||
+					(ts.isBindingElement(node.parent) &&
+						node.parent.propertyName === node) ||
 					// Ignore `"string".replace("s", "t")`, because the second argument can be a function with `any` types
 					isReplaceMethod(node) ||
 					// Ignore external types
