@@ -47,60 +47,154 @@ for (const sourceFile of program.getSourceFiles()) {
 
 		/**
 		 * @param {ts.Node} node the node to be walked
+		 * @returns {boolean}
+		 */
+		const isReplaceMethod = (node) => {
+			if (!ts.isIdentifier(node)) {
+				return false;
+			}
+
+			if (node.text !== "replace") {
+				return false;
+			}
+
+			if (!ts.isPropertyAccessExpression(node.parent)) {
+				return false;
+			}
+
+			if (node.parent.name !== node) {
+				return false;
+			}
+
+			const callExpr = node.parent.parent;
+
+			if (!ts.isCallExpression(callExpr)) {
+				return false;
+			}
+
+			const objType = typeChecker.getTypeAtLocation(node.parent.expression);
+			const isString =
+				(objType.getFlags() &
+					(ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !==
+				0;
+
+			if (!isString) {
+				return false;
+			}
+
+			const args = callExpr.arguments;
+
+			if (args.length < 2) {
+				return false;
+			}
+
+			const secondArg = args[1];
+			const isStringOrTemplate =
+				// "string"
+				ts.isStringLiteral(secondArg) ||
+				// `template`
+				ts.isNoSubstitutionTemplateLiteral(secondArg) ||
+				// `template ${var}`
+				ts.isTemplateExpression(secondArg);
+
+			if (isStringOrTemplate) {
+				return true;
+			}
+
+			const type = typeChecker.getTypeAtLocation(secondArg);
+			const signatures = type.getCallSignatures();
+
+			let needIgnore = false;
+
+			for (const signature of signatures) {
+				const parameters = signature.getParameters();
+
+				if (parameters.length === 1) {
+					needIgnore = true;
+				}
+			}
+
+			return needIgnore;
+		};
+
+		/**
+		 * @param {ts.Node} node the node to be walked
 		 * @returns {void}
 		 */
 		const walkNode = (node) => {
 			if (ts.isIdentifier(node) || node.kind === ts.SyntaxKind.ThisKeyword) {
 				const type = typeChecker.getTypeAtLocation(node);
-				if (type) {
-					const { line, character } = ts.getLineAndCharacterOfPosition(
-						sourceFile,
-						node.getStart(),
-					);
-					const { line: lineEnd, character: characterEnd } =
-						ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
-					const typeText = typeChecker.typeToString(type);
-					let isExternal = false;
 
-					/**
-					 * @param {ts.Type} type the type to be checked
-					 * @returns {void}
-					 */
-					const checkDecls = (type) => {
-						if (!type.symbol) return;
-						for (const decl of type.symbol.getDeclarations()) {
-							const sourceFile = decl.getSourceFile();
-							if (sourceFile && sourceFile.isDeclarationFile) isExternal = true;
-						}
-					};
-					if (node.parent && ts.isPropertyAccessExpression(node.parent)) {
-						const expressionType = typeChecker.getTypeAtLocation(
-							node.parent.expression,
-						);
-						checkDecls(expressionType);
-					}
-					if (/^(<.*>)?\(/.test(typeText)) {
-						checkDecls(type);
-					}
-					const isTyped =
-						isExternal ||
-						(!(type.flags & ts.TypeFlags.Any) && !/\bany\b/.test(typeText));
-					rep.statementMap[statementIndex] = {
-						start: {
-							line: line + 1,
-							column: character,
-						},
-						end: {
-							line: lineEnd + 1,
-							column: characterEnd - 1,
-						},
-					};
-					rep.s[statementIndex] = isTyped ? typeText.length : 0;
-					statementIndex++;
+				if (!type) {
+					return;
 				}
+
+				const { line, character } = ts.getLineAndCharacterOfPosition(
+					sourceFile,
+					node.getStart(),
+				);
+				const { line: lineEnd, character: characterEnd } =
+					ts.getLineAndCharacterOfPosition(sourceFile, node.getEnd());
+
+				let isExternal = false;
+
+				/**
+				 * @param {ts.Type} type the type to be checked
+				 * @returns {void}
+				 */
+				const checkDecls = (type) => {
+					if (!type.symbol) return;
+					for (const decl of type.symbol.getDeclarations()) {
+						const sourceFile = decl.getSourceFile();
+						if (sourceFile && sourceFile.isDeclarationFile) isExternal = true;
+					}
+				};
+
+				if (node.parent && ts.isPropertyAccessExpression(node.parent)) {
+					const expressionType = typeChecker.getTypeAtLocation(
+						node.parent.expression,
+					);
+					checkDecls(expressionType);
+				}
+
+				const typeText = typeChecker.typeToString(type);
+
+				if (/^(<.*>)?\(/.test(typeText)) {
+					checkDecls(type);
+				}
+
+				const isTyped =
+					// Ignore labeled statements
+					((ts.isLabeledStatement(node.parent) ||
+							ts.isBreakStatement(node.parent) ||
+							ts.isContinueStatement(node.parent)) &&
+						node.parent.label === node) ||
+					// Ignore `name` in `const { name: otherName } = obj;`
+					(ts.isBindingElement(node.parent) && node.parent.propertyName === node) ||
+					// Ignore `"string".replace("s", "t")`, because the second argument can be a function with `any` types
+					isReplaceMethod(node) ||
+					// Ignore external types
+					isExternal ||
+					// Should be not `any` and don't include `any` in types
+					(!(type.flags & ts.TypeFlags.Any) && !/\bany\b/.test(typeText));
+
+				rep.statementMap[statementIndex] = {
+					start: {
+						line: line + 1,
+						column: character,
+					},
+					end: {
+						line: lineEnd + 1,
+						column: characterEnd - 1,
+					},
+				};
+				rep.s[statementIndex] = isTyped ? typeText.length : 0;
+				statementIndex++;
 			}
+
 			node.forEachChild(walkNode);
 		};
+
 		sourceFile.forEachChild(walkNode);
 	}
 }
