@@ -540,8 +540,9 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "index", symbolName: SymbolName, objectType: ts.Type, indexType: ts.Type }} ParsedIndexType */
 	/** @typedef {{ type: "template", texts: readonly string[], types: readonly ts.Type[] }} ParsedTemplateType */
 	/** @typedef {{ type: "import", symbolName: SymbolName, exportName: string, from: string, isValue: boolean }} ParsedImportType */
-	/** @typedef {{ type: "symbol", symbolName: SymbolName }} ParsedSymbolType */
-	/** @typedef {ParsedPrimitiveType | ParsedTypeParameterType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedIndexType | ParsedTemplateType | ParsedImportType | ParsedSymbolType} ParsedType */
+	/** @typedef {{ type: "symbol", symbolName: SymbolName}} ParsedSymbolType */
+	/** @typedef {{ type: "conditional", symbolName: SymbolName, checkType: ts.Type, extendsType: ts.Type, trueType: ts.Type, falseType: ts.Type, typeParameters?: readonly ts.Type[] }} ParsedConditionalType */
+	/** @typedef {ParsedPrimitiveType | ParsedTypeParameterType | ParsedTupleType | ParsedInterfaceType | ParsedReferenceType | ParsedUnionType | ParsedIntersectionType | ParsedIndexType | ParsedTemplateType | ParsedImportType | ParsedSymbolType | ParsedConditionalType} ParsedType */
 	/** @typedef {ParsedType | MergedClassType | MergedNamespaceType} MergedType */
 
 	const isExcluded = (name) => {
@@ -848,6 +849,8 @@ const printError = (diagnostic) => {
 			return argsWithoutDefaults;
 		};
 
+		const symbol = type.aliasSymbol || type.getSymbol();
+
 		if (/** @type {any} */ (type).isTypeParameter()) {
 			return {
 				type: "typeParameter",
@@ -1053,8 +1056,6 @@ const printError = (diagnostic) => {
 			};
 		}
 
-		const symbol = type.aliasSymbol || type.getSymbol();
-
 		if (objectFlags & ts.ObjectFlags.Reference) {
 			const typeRef = /** @type {ts.TypeReference} */ (type);
 			const typeArguments = checker.getTypeArguments(typeRef);
@@ -1200,6 +1201,38 @@ const printError = (diagnostic) => {
 			};
 		}
 
+		if (flags & ts.TypeFlags.Conditional) {
+			const { checkType, extendsType, root } =
+				/** @type {ts.ConditionalType} */ (type);
+
+			return {
+				type: "conditional",
+				symbolName,
+				checkType,
+				extendsType,
+				trueType: checker.getTypeAtLocation(root.node.trueType),
+				falseType: checker.getTypeAtLocation(root.node.falseType),
+				typeParameters:
+					type.aliasTypeArguments && type.aliasTypeArguments.length > 0
+						? type.aliasTypeArguments
+						: undefined,
+				// skip: true,
+			};
+		}
+
+		if (flags & ts.TypeFlags.IndexedAccess) {
+			const { objectType, indexType } = /** @type {ts.IndexedAccessType} */ (
+				type
+			);
+
+			return {
+				type: "index",
+				symbolName: parseName(type),
+				objectType,
+				indexType,
+			};
+		}
+
 		const declaration = getDeclaration(symbol);
 
 		return {
@@ -1288,6 +1321,12 @@ const printError = (diagnostic) => {
 					typeUsedAsTypeArgument.add(inner);
 					captureType(type, inner);
 				}
+				break;
+			case "conditional":
+				captureType(type, parsed.checkType);
+				captureType(type, parsed.extendsType);
+				captureType(type, parsed.trueType);
+				captureType(type, parsed.falseType);
 				break;
 			case "interface":
 				for (const prop of parsed.baseTypes) {
@@ -1651,6 +1690,18 @@ const printError = (diagnostic) => {
 					return x === undefined ? item : x;
 				});
 			}
+			case "conditional": {
+				const { symbolName, checkType, extendsType, trueType, falseType } =
+					parsed;
+				return [
+					parsed.type,
+					symbolName[0],
+					checkType,
+					extendsType,
+					trueType,
+					falseType,
+				];
+			}
 			case "interface": {
 				const {
 					symbolName,
@@ -1770,6 +1821,12 @@ const printError = (diagnostic) => {
 	const needName = [];
 	for (const [type, parsed] of parsedCollectedTypes) {
 		switch (parsed.type) {
+			case "conditional": {
+				if (parsed.typeParameters) {
+					needName.push([type, parsed]);
+				}
+				break;
+			}
 			case "interface": {
 				if (
 					parsed.typeParameters ||
@@ -2157,6 +2214,7 @@ const printError = (diagnostic) => {
 				return parsed.name;
 			case "typeParameter": {
 				let code = parsed.name;
+
 				if (state === "in type args") {
 					if (parsed.constraint) {
 						const constraint = getCode(parsed.constraint, typeArgs, state);
@@ -2167,6 +2225,7 @@ const printError = (diagnostic) => {
 						code += ` = ${defaultValue}`;
 					}
 				}
+
 				return code;
 			}
 			case "template": {
@@ -2180,10 +2239,21 @@ const printError = (diagnostic) => {
 				return code;
 			}
 			case "index": {
-				return `(${getCode(parsed.objectType, typeArgs)})[${getCode(
-					parsed.indexType,
-					typeArgs,
-				)}]`;
+				const { objectType, indexType } = parsed;
+				const getIndexTypeCode = () => {
+					if (indexType.flags & ts.TypeFlags.Substitution) {
+						const { baseType } = /** @type {ts.SubstitutionType} */ (indexType);
+						const symbol = baseType.getSymbol();
+						if (symbol) {
+							const name = symbol.getName();
+							if (name !== "__type" && name !== "unknown") return name;
+						}
+					}
+
+					return getCode(indexType, typeArgs);
+				};
+
+				return `(${getCode(objectType, typeArgs)})[${getIndexTypeCode()}]`;
 			}
 			case "union":
 			case "intersection": {
@@ -2260,6 +2330,59 @@ const printError = (diagnostic) => {
 					typeArgs,
 					"with type args",
 				)}${typeArgumentsWithoutDefaults}`;
+			}
+			case "conditional": {
+				const getExtendsString = (t) => {
+					if (t.flags & ts.TypeFlags.TypeParameter) {
+						const symbol = t.getSymbol();
+						if (
+							symbol &&
+							symbol.declarations &&
+							symbol.declarations.length > 0
+						) {
+							const decl = symbol.declarations[0];
+							if (
+								ts.isTypeParameterDeclaration(decl) &&
+								decl.parent &&
+								ts.isInferTypeNode(decl.parent)
+							) {
+								return "infer " + symbol.getName();
+							}
+						}
+						return symbol ? symbol.getName() : getCode(t, typeArgs, state);
+					}
+
+					if (checker.isArrayType(t)) {
+						const elementType = t.typeArguments[0];
+						return "(" + getExtendsString(elementType) + ")[]";
+					}
+
+					return getCode(t, typeArgs, state);
+				};
+
+				const checkType = getCode(parsed.checkType, typeArgs, state);
+				const extendsType = getExtendsString(parsed.extendsType);
+				const trueType = getCode(parsed.trueType, typeArgs, state);
+				const falseType = getCode(parsed.falseType, typeArgs, state);
+
+				const variable = typeToVariable.get(type);
+				if (variable !== undefined) {
+					queueDeclaration(
+						type,
+						variable,
+						() =>
+							`type ${variable}${
+								parsed.typeParameters
+									? `<${parsed.typeParameters
+											.map((t) => getCode(t, new Set(), "in type args"))
+											.join(", ")}>`
+									: ""
+							} = (${checkType} extends ${extendsType} ? ${trueType} : ${falseType});`,
+					);
+					return `${variable}`;
+				}
+
+				return `(${checkType} extends ${extendsType} ? ${trueType} : ${falseType})`;
 			}
 			case "interface": {
 				const variable = typeToVariable.get(type);
