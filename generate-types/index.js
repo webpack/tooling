@@ -1221,8 +1221,9 @@ const printError = (diagnostic) => {
 		}
 
 		if (flags & ts.TypeFlags.IndexedAccess) {
-			const { objectType, indexType } =
-				/** @type {ts.IndexedAccessType} */ (type);
+			const { objectType, indexType } = /** @type {ts.IndexedAccessType} */ (
+				type
+			);
 
 			return {
 				type: "index",
