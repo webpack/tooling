@@ -18,7 +18,7 @@ const ajv = new Ajv({
 	strictNumbers: false,
 	logger: false,
 	loadSchema: (uri) => {
-		schemaPath = fileURLToPath(uri);
+		schemaPath = fileURLToPath(new URL(decodeURI(uri)));
 		const schema = require(schemaPath);
 		const processedSchema = processJson(schema);
 		processedSchema.$id = uri;
