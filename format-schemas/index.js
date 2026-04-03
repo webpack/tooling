@@ -113,6 +113,8 @@ const PROPERTIES = [
 	"tsType",
 
 	"deprecated",
+
+	"experimental",
 ];
 
 const processJson = processSchema.bind(null, {

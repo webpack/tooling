@@ -110,6 +110,7 @@ const EXCLUDED_PROPERTIES = [
 	"title",
 	"description",
 	"deprecated",
+	"experimental",
 	"cli",
 	"implements",
 	"tsType",

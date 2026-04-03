@@ -101,6 +101,11 @@ const resolvePath = (root, ref) => {
 };
 
 const preprocessSchema = (schema, root = schema, path = []) => {
+	if (schema.experimental) {
+		const experimental = typeof schema.experimental === "string" ? `@experimental ${schema.experimental}` : "@experimental";
+		schema.description = schema.description ? `${schema.description}\n${experimental}` : experimental;
+		delete schema.experimental;
+	}
 	if ("definitions" in schema) {
 		for (const key of Object.keys(schema.definitions)) {
 			preprocessSchema(schema.definitions[key], root, [key]);
