@@ -129,6 +129,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 				schema.properties[key] = {
 					description: result.description,
 					deprecated: result.deprecated,
+					experimental: result.experimental,
 					anyOf: [property],
 				};
 			} else if (
@@ -140,6 +141,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 				schema.properties[key] = {
 					description: property.description || result.description,
 					deprecated: property.deprecated || result.deprecated,
+					experimental: property.experimental || result.experimental,
 					anyOf: property.oneOf,
 				};
 				preprocessSchema(schema.properties[key], root, [...path, key]);

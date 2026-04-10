@@ -633,9 +633,20 @@ const printError = (diagnostic) => {
 			.getJsDocTags(checker)
 			.filter((tag) => tag.name === "deprecated");
 
-		if (!commentText && deprecatedTags.length === 0) return "";
+		const experimentalTags = symbol
+			.getJsDocTags(checker)
+			.filter((tag) => tag.name === "experimental");
+
+		if (
+			!commentText &&
+			deprecatedTags.length === 0 &&
+			experimentalTags.length === 0
+		) {
+			return "";
+		}
 
 		const lines = commentText ? commentText.split("\n") : [];
+
 		for (const tag of deprecatedTags) {
 			const text = normalizeText(tag.text);
 			if (text && !commentText) {
@@ -643,6 +654,16 @@ const printError = (diagnostic) => {
 				lines.push("@deprecated");
 			} else {
 				lines.push(text ? `@deprecated ${text}` : "@deprecated");
+			}
+		}
+
+		for (const tag of experimentalTags) {
+			const text = normalizeText(tag.text);
+			if (text && !commentText) {
+				lines.push(...text.split("\n"));
+				lines.push("@experimental");
+			} else {
+				lines.push(text ? `@experimental ${text}` : "@experimental");
 			}
 		}
 
