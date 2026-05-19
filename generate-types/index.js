@@ -812,7 +812,7 @@ const printError = (diagnostic) => {
 				}
 				if (
 					name.startsWith("__@") &&
-					(prop.flags & ts.TypeFlags.ESSymbolLike) === 0
+					(prop.flags & ts.SymbolFlags.Method) === 0
 				)
 					continue;
 				if (baseTypes.some((t) => t.getProperty(name))) continue;
