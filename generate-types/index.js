@@ -532,7 +532,7 @@ const printError = (diagnostic) => {
 	/** @typedef {{ type: "typeParameter", name: string, constraint: ts.Type, defaultValue: ts.Type }} ParsedTypeParameterType */
 	/** @typedef {{ type: "tuple", typeArguments: readonly ts.Type[] }} ParsedTupleType */
 	/** @typedef {{ type: "interface", symbolName: SymbolName, subtype: "class" | "module" | "literal" | undefined, properties: PropertiesMap, constructors: ParsedSignature[], calls: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseTypes: readonly ts.Type[], documentation: string }} ParsedInterfaceType */
-	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined }} MergedClassType */
+	/** @typedef {{ type: "class" | "typeof class", symbolName: SymbolName, properties: PropertiesMap, staticProperties: PropertiesMap, constructors: ParsedSignature[], numberIndex?: ts.Type, stringIndex?: ts.Type, typeParameters?: readonly ts.Type[], baseType: ts.Type, correspondingType: ts.Type | undefined, documentation: string }} MergedClassType */
 	/** @typedef {{ type: "namespace", symbolName: SymbolName, calls: ParsedSignature[], exports: PropertiesMap }} MergedNamespaceType */
 	/** @typedef {{ type: "reference", target: ts.Type, typeArguments: readonly ts.Type[], typeArgumentsWithoutDefaults: readonly ts.Type[] }} ParsedReferenceType */
 	/** @typedef {{ type: "union", symbolName: SymbolName, types: ts.Type[], typeParameters?: readonly ts.Type[] }} ParsedUnionType */
@@ -1485,6 +1485,7 @@ const printError = (diagnostic) => {
 						stringIndex: instance.stringIndex,
 						typeParameters: instance.typeParameters,
 						baseType: instance.baseTypes[0],
+						documentation: instance.documentation || parsed.documentation,
 					};
 					parsedCollectedTypes.set(instanceType, {
 						type: "class",
@@ -1528,6 +1529,7 @@ const printError = (diagnostic) => {
 			stringIndex: parsed.stringIndex,
 			typeParameters: parsed.typeParameters,
 			baseType: parsed.baseTypes[0],
+			documentation: parsed.documentation,
 		};
 		parsedCollectedTypes.set(type, newParsed);
 	}
@@ -2470,7 +2472,7 @@ const printError = (diagnostic) => {
 						parsedCollectedTypes.get(classType)
 					);
 					const typeArgs = new Set(parsed.typeParameters);
-					return `declare ${
+					return `${parsed.documentation}declare ${
 						parsed.constructors.length === 0 ? "abstract class" : "class"
 					} ${variable}${
 						parsed.typeParameters
