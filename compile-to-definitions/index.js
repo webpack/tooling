@@ -101,6 +101,13 @@ const resolvePath = (root, ref) => {
 };
 
 const preprocessSchema = (schema, root = schema, path = []) => {
+	if (schema.default !== undefined) {
+		const defaultTag = `@default ${JSON.stringify(schema.default)}`;
+		schema.description = schema.description
+			? `${schema.description}\n${defaultTag}`
+			: defaultTag;
+		delete schema.default;
+	}
 	if (schema.experimental) {
 		const experimental =
 			typeof schema.experimental === "string"
@@ -130,6 +137,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 					description: result.description,
 					deprecated: result.deprecated,
 					experimental: result.experimental,
+					default: result.default,
 					anyOf: [property],
 				};
 			} else if (
@@ -142,6 +150,8 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 					description: property.description || result.description,
 					deprecated: property.deprecated || result.deprecated,
 					experimental: property.experimental || result.experimental,
+					default:
+						property.default !== undefined ? property.default : result.default,
 					anyOf: property.oneOf,
 				};
 				preprocessSchema(schema.properties[key], root, [...path, key]);
