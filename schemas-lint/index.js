@@ -52,6 +52,7 @@ for (const filename of schemas) {
 			"link",
 			"deprecated",
 			"experimental",
+			"added",
 		];
 
 		const isReference = (schema) => {
