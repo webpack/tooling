@@ -629,41 +629,29 @@ const printError = (diagnostic) => {
 				.trim();
 
 		let commentText = normalizeText(symbol.getDocumentationComment(checker));
-		const deprecatedTags = symbol
-			.getJsDocTags(checker)
-			.filter((tag) => tag.name === "deprecated");
+		const jsDocTags = symbol.getJsDocTags(checker);
+		const forwardedTagNames = ["default", "deprecated", "experimental"];
+		const forwardedTags = forwardedTagNames.flatMap((name) =>
+			jsDocTags.filter((tag) => tag.name === name),
+		);
 
-		const experimentalTags = symbol
-			.getJsDocTags(checker)
-			.filter((tag) => tag.name === "experimental");
-
-		if (
-			!commentText &&
-			deprecatedTags.length === 0 &&
-			experimentalTags.length === 0
-		) {
+		if (!commentText && forwardedTags.length === 0) {
 			return "";
 		}
 
 		const lines = commentText ? commentText.split("\n") : [];
 
-		for (const tag of deprecatedTags) {
+		for (const tag of forwardedTags) {
 			const text = normalizeText(tag.text);
-			if (text && !commentText) {
+			if (
+				text &&
+				!commentText &&
+				(tag.name === "deprecated" || tag.name === "experimental")
+			) {
 				lines.push(...text.split("\n"));
-				lines.push("@deprecated");
+				lines.push(`@${tag.name}`);
 			} else {
-				lines.push(text ? `@deprecated ${text}` : "@deprecated");
-			}
-		}
-
-		for (const tag of experimentalTags) {
-			const text = normalizeText(tag.text);
-			if (text && !commentText) {
-				lines.push(...text.split("\n"));
-				lines.push("@experimental");
-			} else {
-				lines.push(text ? `@experimental ${text}` : "@experimental");
+				lines.push(text ? `@${tag.name} ${text}` : `@${tag.name}`);
 			}
 		}
 
