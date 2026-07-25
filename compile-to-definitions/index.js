@@ -101,6 +101,14 @@ const resolvePath = (root, ref) => {
 };
 
 const preprocessSchema = (schema, root = schema, path = []) => {
+	if (schema.added) {
+		const added =
+			typeof schema.added === "string" ? `@since ${schema.added}` : "@since";
+		schema.description = schema.description
+			? `${schema.description}\n${added}`
+			: added;
+		delete schema.added;
+	}
 	if (schema.experimental) {
 		const experimental =
 			typeof schema.experimental === "string"
@@ -130,6 +138,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 					description: result.description,
 					deprecated: result.deprecated,
 					experimental: result.experimental,
+					added: result.added,
 					anyOf: [property],
 				};
 			} else if (
@@ -142,6 +151,7 @@ const preprocessSchema = (schema, root = schema, path = []) => {
 					description: property.description || result.description,
 					deprecated: property.deprecated || result.deprecated,
 					experimental: property.experimental || result.experimental,
+					added: property.added || result.added,
 					anyOf: property.oneOf,
 				};
 				preprocessSchema(schema.properties[key], root, [...path, key]);

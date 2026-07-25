@@ -115,6 +115,8 @@ const PROPERTIES = [
 	"deprecated",
 
 	"experimental",
+
+	"added",
 ];
 
 const processJson = processSchema.bind(null, {
