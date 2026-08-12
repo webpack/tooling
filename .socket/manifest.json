@@ -1,0 +1,108 @@
+{
+  "patches": {
+    "pkg:npm/lodash@4.17.23": {
+      "uuid": "e32d867a-2d12-4ee4-8bd2-5f976af2db55",
+      "exportedAt": "Fri, 24 Jul 2026 22:28:42 GMT",
+      "files": {
+        "lodash.js": {
+          "beforeHash": "834236b7a9f0cd15d96594c1ae29387aac82c4fb3db59b7c62e6a4967ff1f5b9",
+          "afterHash": "90fbe253df4923c186ef795f27e1aa878043f1ef787bd122777dbc9492c71026"
+        },
+        "lodash.min.js": {
+          "beforeHash": "bbaa7fb62f939816d6779b2c0156ea771aec209a379ffb432227fcdd265b132b",
+          "afterHash": "bd4ee74ebe7b9395fcb9d13aac267445060e2c8cfeb5f73d6ba18a7b334da0c0"
+        },
+        "template.js": {
+          "beforeHash": "4cac4a20c5607248d3a16c00d8ca6676ac6835d3d6c65621dbff10ed7a86fb58",
+          "afterHash": "c1f013c2c6ee91c0953aaa35fabf47f2e8669e7ece6a9d5ac41a47d6261bc405"
+        }
+      },
+      "vulnerabilities": {
+        "GHSA-r5fr-rjxr-66jc": {
+          "cves": [
+            "CVE-2026-4800"
+          ],
+          "summary": "lodash vulnerable to Code Injection via `_.template` imports key names",
+          "severity": "HIGH",
+          "description": "### Impact\n\nThe fix for [CVE-2021-23337](https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the `variable` option in `_.template` but did not apply the same validation to `options.imports` key names. Both paths flow into the same `Function()` constructor sink.\n\nWhen an application passes untrusted input as `options.imports` key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time.\n\nAdditionally, `_.template` uses `assignInWith` to merge imports, which enumerates inherited properties via `for..in`. If `Object.prototype` has been polluted by any other vector, the polluted keys are copied into the imports object and passed to `Function()`.\n\n### Patches\n\nUsers should upgrade to version 4.18.0.\n\nThe fix applies two changes:\n1. Validate `importsKeys` against the existing `reForbiddenIdentifierChars` regex (same check already used for the `variable` option)\n2. Replace `assignInWith` with `assignWith` when merging imports, so only own properties are enumerated\n\n### Workarounds\n\nDo not pass untrusted input as key names in `options.imports`. Only use developer-controlled, static key names."
+        }
+      },
+      "description": "",
+      "license": "",
+      "tier": "free"
+    },
+    "pkg:npm/minimatch@3.0.4": {
+      "uuid": "a38455cf-ba68-4b58-b9f6-761d87111c68",
+      "exportedAt": "Sat, 28 Feb 2026 22:11:48 GMT",
+      "files": {
+        "package/minimatch.js": {
+          "beforeHash": "9ec8613763a63d067d8d4b6b27bd280db84fd6b6bfcefe89d666a294be0c47fe",
+          "afterHash": "afdad541a7237e2949a5029eaef5536e1fa62e3d787a6864ace72049d53f167e"
+        }
+      },
+      "vulnerabilities": {
+        "GHSA-3ppc-4f35-3m26": {
+          "cves": [
+            "CVE-2026-26996"
+          ],
+          "summary": "minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern",
+          "severity": "HIGH",
+          "description": "### Summary\n`minimatch` is vulnerable to Regular Expression Denial of Service (ReDoS) when a glob pattern contains many consecutive `*` wildcards followed by a literal character that doesn't appear in the test string. Each `*` compiles to a separate `[^/]*?` regex group, and when the match fails, V8's regex engine backtracks exponentially across all possible splits.\n\nThe time complexity is O(4^N) where N is the number of `*` characters. With N=15, a single `minimatch()` call takes ~2 seconds. With N=34, it hangs effectively forever.\n\n\n### Details\n_Give all details on the vulnerability. Pointing to the incriminated source code is very helpful for the maintainer._\n\n### PoC\nWhen minimatch compiles a glob pattern, each `*` becomes `[^/]*?` in the generated regex. For a pattern like `***************X***`:\n\n```\n/^(?!\\.)[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?[^/]*?X[^/]*?[^/]*?[^/]*?$/\n```\n\nWhen the test string doesn't contain `X`, the regex engine must try every possible way to distribute the characters across all the `[^/]*?` groups before concluding no match exists. With N groups and M characters, this is O(C(N+M, N)) — exponential.\n### Impact\nAny application that passes user-controlled strings to `minimatch()` as the pattern argument is vulnerable to DoS. This includes:\n- File search/filter UIs that accept glob patterns\n- `.gitignore`-style filtering with user-defined rules\n- Build tools that accept glob configuration\n- Any API that exposes glob matching to untrusted input\n\n----\n\nThanks to @ljharb for back-porting the fix to legacy versions of minimatch."
+        }
+      },
+      "description": "",
+      "license": "MIT",
+      "tier": "free"
+    },
+    "pkg:npm/ansi-regex@5.0.0": {
+      "uuid": "0de00809-425e-4941-baba-93bd3b3d33a5",
+      "exportedAt": "Tue, 27 Jan 2026 13:56:12 GMT",
+      "files": {
+        "package/index.js": {
+          "beforeHash": "1dd74c45764139e4e528a4a319853c30e73c078366be0d70f2dea7eab52d74fa",
+          "afterHash": "5d8b86c259cbe959b1302a4c074f4bd1a09b2e6a9f21e2c52514e9a66e8a9b6d"
+        }
+      },
+      "vulnerabilities": {
+        "GHSA-93q8-gq69-wqmw": {
+          "cves": [
+            "CVE-2021-3807"
+          ],
+          "summary": "Inefficient Regular Expression Complexity in chalk/ansi-regex",
+          "severity": "HIGH",
+          "description": "ansi-regex is vulnerable to Inefficient Regular Expression Complexity which could lead to a denial of service when parsing invalid ANSI escape codes.\n\n**Proof of Concept**\n```js\nimport ansiRegex from 'ansi-regex';\nfor(var i = 1; i <= 50000; i++) {\n    var time = Date.now();\n    var attack_str = \"\\u001B[\"+\";\".repeat(i*10000);\n    ansiRegex().test(attack_str)\n    var time_cost = Date.now() - time;\n    console.log(\"attack_str.length: \" + attack_str.length + \": \" + time_cost+\" ms\")\n}\n```\nThe ReDOS is mainly due to the sub-patterns `[[\\\\]()#;?]*` and `(?:;[-a-zA-Z\\\\d\\\\/#&.:=?%@~_]*)*`"
+        }
+      },
+      "description": "",
+      "license": "MIT",
+      "tier": "free"
+    },
+    "pkg:npm/picomatch@4.0.3": {
+      "uuid": "b28795c3-f3f7-4890-9035-8d11b877ec4e",
+      "exportedAt": "Fri, 17 Jul 2026 20:00:08 GMT",
+      "files": {
+        "lib/constants.js": {
+          "beforeHash": "eef2a3aa455603d6caa9106032ab56bb3d80664a99c1688b0bcf556016d76f99",
+          "afterHash": "be24e61e41b295a9be776ddc34c41c530dd5002603f627b1ab883f459411e267"
+        },
+        "lib/parse.js": {
+          "beforeHash": "2f4c989a45e30c479d689b30802a1f6195ad76ebceb4990340bcefbd5e23dbcb",
+          "afterHash": "978d06eef5b8f5b8a7e6a306938de8f558f437c32a700ec5b12afd872fc54679"
+        }
+      },
+      "vulnerabilities": {
+        "GHSA-c2c7-rcm5-vvqj": {
+          "cves": [
+            "CVE-2026-33671"
+          ],
+          "summary": "Picomatch has a ReDoS vulnerability via extglob quantifiers",
+          "severity": "HIGH",
+          "description": "### Impact\n`picomatch` is vulnerable to Regular Expression Denial of Service (ReDoS) when processing crafted extglob patterns. Certain patterns using extglob quantifiers such as `+()` and `*()`, especially when combined with overlapping alternatives or nested extglobs, are compiled into regular expressions that can exhibit catastrophic backtracking on non-matching input.\n\nExamples of problematic patterns include `+(a|aa)`, `+(*|?)`, `+(+(a))`, `*(+(a))`, and `+(+(+(a)))`. In local reproduction, these patterns caused multi-second event-loop blocking with relatively short inputs. For example, `+(a|aa)` compiled to `^(?:(?=.)(?:a|aa)+)$` and took about 2 seconds to reject a 41-character non-matching input, while nested patterns such as `+(+(a))` and `*(+(a))` took around 29 seconds to reject a 33-character input on a modern M1 MacBook.\n\nApplications are impacted when they allow untrusted users to supply glob patterns that are passed to `picomatch` for compilation or matching. In those cases, an attacker can cause excessive CPU consumption and block the Node.js event loop, resulting in a denial of service. Applications that only use trusted, developer-controlled glob patterns are much less likely to be exposed in a security-relevant way.\n\n### Patches\nThis issue is fixed in picomatch 4.0.4, 3.0.2 and 2.3.2.\n\nUsers should upgrade to one of these versions or later, depending on their supported release line.\n\n### Workarounds\nIf upgrading is not immediately possible, avoid passing untrusted glob patterns to `picomatch`.\n\nPossible mitigations include:\n- disable extglob support for untrusted patterns by using `noextglob: true`\n- reject or sanitize patterns containing nested extglobs or extglob quantifiers such as `+()` and `*()`\n- enforce strict allowlists for accepted pattern syntax\n- run matching in an isolated worker or separate process with time and resource limits\n- apply application-level request throttling and input validation for any endpoint that accepts glob patterns\n\n### Resources\n- Picomatch repository: https://github.com/micromatch/picomatch\n- `lib/parse.js` and `lib/constants.js` are involved in generating the vulnerable regex forms\n- Comparable ReDoS precedent: CVE-2024-4067 (`micromatch`)\n- Comparable generated-regex precedent: CVE-2024-45296 (`path-to-regexp`)"
+        }
+      },
+      "description": "",
+      "license": "",
+      "tier": "free"
+    }
+  }
+}
