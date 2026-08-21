@@ -15,6 +15,7 @@ const prettier = require("prettier");
 
 process.exitCode = 1;
 let exitCode = 0;
+let hasUnresolvableTypes = false;
 
 const AnonymousType = "__Type";
 
@@ -364,8 +365,26 @@ const printError = (diagnostic) => {
 		return name;
 	};
 
+	/**
+	 * @param {ts.Symbol} symbol symbol
+	 * @returns {string} location of the symbol for error messages
+	 */
+	const getSymbolLocation = (symbol) => {
+		const decls = symbol.getDeclarations();
+		const decl = decls && decls[0];
+		if (!decl) return "<unknown location>";
+		const source = decl.getSourceFile();
+		const { line, character } = ts.getLineAndCharacterOfPosition(
+			source,
+			decl.getStart(),
+		);
+		return `${source.fileName} (${line + 1},${character + 1})`;
+	};
+
 	const getTypeOfSymbol = (symbol, isValue) => {
 		let decl;
+		/** @type {ts.Type | undefined} */
+		let errorType;
 		const type = (() => {
 			let type;
 			if (!isValue) {
@@ -373,6 +392,7 @@ const printError = (diagnostic) => {
 				if (type && type.intrinsicName !== "error") {
 					return type;
 				}
+				errorType = errorType || type;
 			}
 			if (symbol.type) return symbol.type;
 			const decls = symbol.getDeclarations();
@@ -382,12 +402,26 @@ const printError = (diagnostic) => {
 				if (type && type.intrinsicName !== "error") {
 					return type;
 				}
+				errorType = errorType || type;
 				type = checker.getTypeAtLocation(decl);
 				if (type && type.intrinsicName !== "error") {
 					return type;
 				}
+				errorType = errorType || type;
 			}
 		})();
+		if (!type) {
+			// Without a type there is nothing to generate, but reporting all
+			// unresolvable symbols at once is a lot more useful than failing on the
+			// first one, so continue with the error type and bail out before writing.
+			hasUnresolvableTypes = true;
+			console.error(
+				`${getSymbolLocation(symbol)}: Unable to resolve the type of "${
+					symbol.name
+				}".`,
+			);
+			return errorType || checker.getDeclaredTypeOfSymbol(symbol);
+		}
 		if (type && decl) {
 			// Learn about type nodes
 			if (
@@ -2666,6 +2700,16 @@ const printError = (diagnostic) => {
 
 	for (const [, fn] of emitDeclarations) {
 		fn();
+	}
+
+	if (hasUnresolvableTypes) {
+		console.error(
+			"Some types can't be resolved, so no declarations are generated.",
+		);
+		console.error(
+			"Note that a type imported with `@import` is only a local alias, it's not re-exported from the module like a `@typedef` is.",
+		);
+		return;
 	}
 
 	const outputFilePath = path.resolve(root, outputFile);

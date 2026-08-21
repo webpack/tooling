@@ -18,18 +18,51 @@ const sortImport = (a, b) => {
 	return 0;
 };
 
-const execToArray = (content, regexp) => {
+const defaultKey = (match) => match[1] + match[2];
+
+const execToArray = (content, regexp, getKey = defaultKey) => {
 	const items = [];
 	let match = regexp.exec(content);
 	while (match) {
 		items.push({
 			content: match[0],
-			key: match[1] + match[2],
+			key: getKey(match),
 		});
 		match = regexp.exec(content);
 	}
 	return items;
 };
+
+// Anything that can appear inside a jsdoc comment, i. e. everything up to the
+// closing `*/`. Used to match both single line and multi line jsdoc comments.
+const JSDOC_CONTENT = String.raw`(?:[^*]|\*(?!\/))*?`;
+
+// Optional type arguments like `<T>` or `<K, V>`
+const TYPE_ARGUMENTS = String.raw`(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?`;
+
+// Legacy type import:
+// /** @typedef {import("./Module")} Module */
+// /** @template T @typedef {import("./Module").Item<T>} Item<T> */
+const TYPEDEF_TYPE_IMPORT = String.raw`\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("(?<typedefFrom>[^"]+)"\)(?<typedefMember>(?:\.\w+)*${TYPE_ARGUMENTS})\} \w+${TYPE_ARGUMENTS} \*\/\n`;
+
+// `@import` type import, single line or wrapped over multiple lines:
+// /** @import Module from "./Module" */
+// /** @import { Item, Other as Alias } from "./Module" */
+// /** @import Module, { Item } from "./Module" */
+// /**
+//  * @import {
+//  * 	Item,
+//  * 	Other
+//  * } from "./Module"
+//  */
+const IMPORT_TYPE_IMPORT = String.raw`\/\*\*${JSDOC_CONTENT}@import\b${JSDOC_CONTENT}from "(?<importFrom>[^"]+)"\s*\*\/\n`;
+
+const TYPE_IMPORT = `(?:${TYPEDEF_TYPE_IMPORT}|${IMPORT_TYPE_IMPORT})`;
+
+const typeImportKey = ({ groups }) =>
+	groups.importFrom === undefined
+		? groups.typedefFrom + groups.typedefMember
+		: groups.importFrom;
 
 /**
  * @typedef {Object} Schema
@@ -103,13 +136,13 @@ const schema = [
 	},
 	{
 		title: "type imports",
-		regexp:
-			/(\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("[^"]+"\)(\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n)+\n/g,
+		regexp: new RegExp(`(?:${TYPE_IMPORT})+\\n`, "g"),
 		updateMessage: "sort type imports alphabetically",
 		update(content) {
 			const items = execToArray(
 				content,
-				/\/\*\* (?:@template \w+ )*@typedef \{(?:typeof )?import\("([^"]+)"\)((?:\.\w+)*(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)?)\} \w+(?:<(?:(?:\w\.)*\w+, )*(?:\w\.)*\w+>)? \*\/\n/g,
+				new RegExp(TYPE_IMPORT, "g"),
+				typeImportKey,
 			);
 			items.sort(sortImport);
 			return items.map((item) => item.content).join("") + "\n";
