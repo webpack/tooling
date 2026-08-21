@@ -381,7 +381,7 @@ const printError = (diagnostic) => {
 		return `${source.fileName} (${line + 1},${character + 1})`;
 	};
 
-	const getTypeOfSymbol = (symbol, isValue) => {
+	const getTypeOfSymbol = (symbol, isValue, reportUnresolvable = true) => {
 		let decl;
 		/** @type {ts.Type | undefined} */
 		let errorType;
@@ -411,15 +411,18 @@ const printError = (diagnostic) => {
 			}
 		})();
 		if (!type) {
-			// Without a type there is nothing to generate, but reporting all
-			// unresolvable symbols at once is a lot more useful than failing on the
-			// first one, so continue with the error type and bail out before writing.
-			hasUnresolvableTypes = true;
-			console.error(
-				`${getSymbolLocation(symbol)}: Unable to resolve the type of "${
-					symbol.name
-				}".`,
-			);
+			if (reportUnresolvable) {
+				// Without a type there is nothing to generate, but reporting all
+				// unresolvable symbols at once is a lot more useful than failing on
+				// the first one, so continue with the error type and bail out before
+				// writing.
+				hasUnresolvableTypes = true;
+				console.error(
+					`${getSymbolLocation(symbol)}: Unable to resolve the type of "${
+						symbol.name
+					}".`,
+				);
+			}
 			return errorType || checker.getDeclaredTypeOfSymbol(symbol);
 		}
 		if (type && decl) {
@@ -904,8 +907,17 @@ const printError = (diagnostic) => {
 		const omitDefaults = (args, parameters) => {
 			if (!parameters) return args;
 			const argsWithoutDefaults = args.slice();
-			for (let i = args.length - 1; i > 0; i--) {
-				if (!parameters[i] || args[i] === parameters[i].getDefault()) {
+			for (let i = args.length - 1; i >= 0; i--) {
+				const parameter = parameters[i];
+				if (!parameter) {
+					argsWithoutDefaults.length--;
+					continue;
+				}
+				const defaultValue = parameter.getDefault();
+				if (
+					args[i] === defaultValue ||
+					(defaultValue !== undefined && args[i] === parameter)
+				) {
 					argsWithoutDefaults.length--;
 				} else {
 					break;
@@ -1172,17 +1184,35 @@ const printError = (diagnostic) => {
 				].filter(Boolean);
 				let externalSource;
 				let exportName;
+				// Several exports can alias one type (node's `buffer` exports the same
+				// type as both `Buffer` and `AllowSharedBuffer`), so prefer the one
+				// named like the symbol instead of whichever is declared first.
+				const preferredName = symbol
+					? ts.unescapeLeadingUnderscores(symbol.escapedName)
+					: undefined;
 				outer: for (const source of potentialSources) {
 					externalSource = source;
 					const symbolToExport = getExportsOfSourceFile(externalSource);
 					exportName = symbolToExport.get(symbol);
 					if (exportName) break;
+					let aliasSymbol;
+					let aliasName;
 					for (const [key, name] of symbolToExport) {
-						if (getTypeOfSymbol(key, false) === type) {
+						if (getTypeOfSymbol(key, false, false) !== type) continue;
+						if (name.slice(name.lastIndexOf(".") + 1) === preferredName) {
 							symbol = key;
 							exportName = name;
 							break outer;
 						}
+						if (aliasName === undefined) {
+							aliasSymbol = key;
+							aliasName = name;
+						}
+					}
+					if (aliasName !== undefined) {
+						symbol = aliasSymbol;
+						exportName = aliasName;
+						break;
 					}
 				}
 				if (exportName === undefined) {
@@ -2345,9 +2375,13 @@ const printError = (diagnostic) => {
 											.map((t) => getCode(t, new Set(), "in type args"))
 											.join(", ")}>`
 									: ""
-							} = ${code(new Set())};`,
+							} = ${code(new Set(parsed.typeParameters))};`,
 					);
-					if (state !== "with type args" && parsed.typeParameters) {
+					if (
+						state !== "with type args" &&
+						parsed.typeParameters &&
+						parsed.typeParameters.every((t) => typeArgs.has(t))
+					) {
 						return `${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs),
 						)}>`;
@@ -2453,8 +2487,19 @@ const printError = (diagnostic) => {
 					}
 
 					if (checker.isArrayType(t)) {
-						const elementType = t.typeArguments[0];
-						return "(" + getExtendsString(elementType) + ")[]";
+						const target = /** @type {ts.TypeReference} */ (t).target;
+						// `isArrayType` covers both `T[]` and `readonly T[]`; only the
+						// latter's target is the global `ReadonlyArray`.
+						const readonly =
+							!!target.symbol &&
+							ts.unescapeLeadingUnderscores(target.symbol.escapedName) ===
+								"ReadonlyArray";
+						const elementType = checker.getTypeArguments(
+							/** @type {ts.TypeReference} */ (t),
+						)[0];
+						return `${readonly ? "readonly " : ""}(${getExtendsString(
+							elementType,
+						)})[]`;
 					}
 
 					return getCode(t, typeArgs, state);
@@ -2505,7 +2550,11 @@ const printError = (diagnostic) => {
 							.map((i) => `\t${i};`)
 							.join("\n")}\n}`;
 					});
-					if (state !== "with type args" && parsed.typeParameters) {
+					if (
+						state !== "with type args" &&
+						parsed.typeParameters &&
+						parsed.typeParameters.every((t) => typeArgs.has(t))
+					) {
 						return `${variable}<${parsed.typeParameters.map((t) =>
 							getCode(t, typeArgs),
 						)}>`;
