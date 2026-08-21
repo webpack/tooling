@@ -155,8 +155,21 @@ Ensures that the starting of all source files follows the following convention:
 const Import = require("./Import");
 const SortedAlphabetically = require("./SortedAlphabetically");
 
-/** @typedef {import("../TypeImport")} TypeImport */
+/** @import TypeImport from "../TypeImport" */
 /** @typedef {import("../SortedAlphabetically")} SortedAlphabetically */
+```
+
+Type imports may use either the `@import` tag or the legacy `@typedef {import("...")}` form.
+Both are sorted together by the module they refer to.
+`@import` tags may also be wrapped over multiple lines:
+
+```js
+/**
+ * @import {
+ * 	LongTypeName,
+ * 	AnotherLongTypeName
+ * } from "../TypeImport"
+ */
 ```
 
 ```text
