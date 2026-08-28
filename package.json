@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@yarnpkg/lockfile": "^1.1.0",
-    "ajv": "^8.1.0",
+    "ajv": "^8.18.0",
     "commondir": "^1.0.1",
     "glob": "^7.1.6",
     "json-schema-to-typescript": "^15.0.4",
