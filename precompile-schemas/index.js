@@ -128,8 +128,10 @@ const processJson = processSchema.bind(null, {
 
 const postprocess = async (code) => {
 	// add hoisted values
+	// Keep in sync with the `absolutePath` keyword of `schema-utils`, the
+	// pre-compiled schema has to accept exactly what the real one accepts
 	if (/absolutePathRegExp/.test(code))
-		code = `const absolutePathRegExp = /^(?:[A-Za-z]:[\\\\/]|\\\\\\\\|\\/)/;${code}`;
+		code = `const absolutePathRegExp = /^(?:file:\\/\\/)?(?:[A-Za-z]:[\\\\/]|\\\\\\\\|\\/)/;${code}`;
 
 	// remove unnecessary error code:
 	code = code
